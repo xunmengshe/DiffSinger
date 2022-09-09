@@ -25,7 +25,7 @@ test_prefixes: [
   'popcs-隐形的翅膀',
 ]
 
-task_cls: tasks.tts.fs2.FastSpeech2Task
+task_cls: tts.tasks.fs2.FastSpeech2Task
 #vocoder: src.singingvocoder.highgan.HighGAN
 #vocoder_ckpt: checkpoints/h_2_model/checkpoint-530000steps.pkl
 vocoder: src.vocodershifigan.HifiGAN

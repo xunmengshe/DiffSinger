@@ -58,12 +58,12 @@ Along vertical axis, DiffSpeech: [0-80]; FastSpeech2: [80-160].
     <th>DiffSpeech vs. FastSpeech 2</th>
   </tr>
   <tr>
-    <td><img src="resources/diffspeech-fs2.png" alt="DiffSpeech-vs-FastSpeech2" height="250"></td>
+    <td><img src="docs/resources/diffspeech-fs2.png" alt="DiffSpeech-vs-FastSpeech2" height="250"></td>
   </tr>
   <tr>
-    <td><img src="resources/diffspeech-fs2-1.png" alt="DiffSpeech-vs-FastSpeech2" height="250"></td>
+    <td><img src="docs/resources/diffspeech-fs2-1.png" alt="DiffSpeech-vs-FastSpeech2" height="250"></td>
   </tr>
   <tr>
-    <td><img src="resources/diffspeech-fs2-2.png" alt="DiffSpeech-vs-FastSpeech2" height="250"></td>
+    <td><img src="docs/resources/diffspeech-fs2-2.png" alt="DiffSpeech-vs-FastSpeech2" height="250"></td>
   </tr>
 </table>

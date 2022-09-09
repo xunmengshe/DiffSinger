@@ -1,9 +1,8 @@
 import torch
 
 import utils
-from .diff.diffusion import GaussianDiffusion
 from .diff.net import DiffNet
-from tasks.tts.fs2 import FastSpeech2Task
+from tts.tasks.fs2 import FastSpeech2Task
 from utils.hparams import hparams
 
 
@@ -14,6 +13,8 @@ DIFF_DECODERS = {
 
 class DiffFsTask(FastSpeech2Task):
     def build_tts_model(self):
+        return
+        from src.diff.diffusion_ import GaussianDiffusion
         mel_bins = hparams['audio_num_mel_bins']
         self.model = GaussianDiffusion(
             phone_encoder=self.phone_encoder,

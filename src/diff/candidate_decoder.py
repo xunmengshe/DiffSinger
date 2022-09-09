@@ -7,9 +7,8 @@ from torch.nn import functional as F
 import torch.nn as nn
 import math
 from utils.hparams import hparams
-from .diffusion import Mish
+from modules.commons.common_layers import Mish
 Linear = nn.Linear
-
 
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):

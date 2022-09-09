@@ -248,15 +248,17 @@ class BaseTask(nn.Module):
                                   'validate'] else 10000,
                               accumulate_grad_batches=hparams['accumulate_grad_batches'])
         if not hparams['infer']:  # train
-            t = datetime.now().strftime('%Y%m%d%H%M%S')
-            code_dir = f'{work_dir}/codes/{t}'
-            # TODO: test filesystem calls
-            os.makedirs(code_dir, exist_ok=True)
-            # subprocess.check_call(f'mkdir "{code_dir}"', shell=True)
-            for c in hparams['save_codes']:
-                shutil.copytree(c, code_dir, dirs_exist_ok=True)
-                # subprocess.check_call(f'xcopy "{c}" "{code_dir}/" /s /e /y', shell=True)
-            print(f"| Copied codes to {code_dir}.")
+            copy_code = input('Code backup? y/n: ') == 'y'
+            if copy_code:
+                t = datetime.now().strftime('%Y%m%d%H%M%S')
+                code_dir = f'{work_dir}/codes/{t}'
+                # TODO: test filesystem calls
+                os.makedirs(code_dir, exist_ok=True)
+                # subprocess.check_call(f'mkdir "{code_dir}"', shell=True)
+                for c in hparams['save_codes']:
+                    shutil.copytree(c, code_dir, dirs_exist_ok=True)
+                    # subprocess.check_call(f'xcopy "{c}" "{code_dir}/" /s /e /y', shell=True)
+                print(f"| Copied codes to {code_dir}.")
             trainer.checkpoint_callback.task = task
             trainer.fit(task)
         else:

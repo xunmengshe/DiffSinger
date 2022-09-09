@@ -1,5 +1,5 @@
 base_config: tts/configs/base.yaml
-task_cls: tasks.tts.fs2.FastSpeech2Task
+task_cls: tts.tasks.fs2.FastSpeech2Task
 
 # model
 hidden_size: 256

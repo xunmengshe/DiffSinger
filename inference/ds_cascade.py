@@ -1,10 +1,10 @@
 import torch
 # from inference.tts.fs import FastSpeechInfer
 # from modules.tts.fs2_orig import FastSpeech2Orig
-from inference.base_svs_infer import BaseSVSInfer
+from basics.base_svs_infer import BaseSVSInfer
 from utils import load_ckpt
 from utils.hparams import hparams
-from src.diff.shallow_diffusion_tts import GaussianDiffusion
+from diff.diffusion import GaussianDiffusion
 from src.diffsinger_task import DIFF_DECODERS
 
 class DiffSingerCascadeInfer(BaseSVSInfer):

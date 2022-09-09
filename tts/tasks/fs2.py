@@ -5,7 +5,7 @@ matplotlib.use('Agg')
 from utils import audio
 import matplotlib.pyplot as plt
 from data_gen.data_gen_utils import get_pitch_parselmouth
-from tasks.tts.fs2_utils import FastSpeechDataset
+from tts.tasks.fs2_utils import FastSpeechDataset
 from utils.cwt import cwt2f0
 from utils.pl_utils import data_loader
 import os
@@ -16,7 +16,7 @@ from utils.hparams import hparams
 from utils.plot import spec_to_figure, dur_to_figure, f0_to_figure
 from utils.pitch_utils import denorm_f0
 from modules.fastspeech.fs2 import FastSpeech2
-from tasks.tts.tts import TtsTask
+from tts.tasks.tts import TtsTask
 import torch
 import torch.optim
 import torch.utils.data
@@ -86,8 +86,6 @@ class FastSpeech2Task(TtsTask):
         outputs['nsamples'] = sample['nsamples']
         mel_out = self.model.out2mel(model_out['mel_out'])
         outputs = utils.tensors_to_scalars(outputs)
-        # if sample['mels'].shape[0] == 1:
-        #     self.add_laplace_var(mel_out, sample['mels'], outputs)
         if batch_idx < hparams['num_valid_plots']:
             self.plot_mel(batch_idx, sample['mels'], mel_out)
             self.plot_dur(batch_idx, sample, model_out)

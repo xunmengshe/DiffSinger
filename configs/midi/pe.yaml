@@ -13,7 +13,7 @@ min_level_db: -120
 binary_data_dir: 'xxx'
 
 pitch_type: frame
-task_cls: tasks.tts.pe.PitchExtractionTask
+task_cls: tts.tasks.pe.PitchExtractionTask
 pitch_extractor_conv_layers: 2
 
 

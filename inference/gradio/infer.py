@@ -10,7 +10,7 @@ import gradio as gr
 import yaml
 from gradio.inputs import Textbox
 
-from inference.base_svs_infer import BaseSVSInfer
+from basics.base_svs_infer import BaseSVSInfer
 from utils.hparams import set_hparams
 from utils.hparams import hparams as hp
 import numpy as np

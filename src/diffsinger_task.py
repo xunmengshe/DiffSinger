@@ -3,7 +3,7 @@ import torch
 import utils
 from utils.hparams import hparams
 from .diff.net import DiffNet
-from .diff.shallow_diffusion_tts import GaussianDiffusion, OfflineGaussianDiffusion
+from .diff.diffusion import GaussianDiffusion, OfflineGaussianDiffusion
 from .diffspeech_task import DiffSpeechTask
 from src.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
 from modules.fastspeech.pe import PitchExtractor
@@ -13,8 +13,8 @@ from modules.fastspeech.tts_modules import mel2ph_to_dur
 
 from .diff.candidate_decoder import FFT
 from utils.pitch_utils import denorm_f0
-from tasks.tts.fs2_utils import FastSpeechDataset
-from tasks.tts.fs2 import FastSpeech2Task
+from tts.tasks.fs2_utils import FastSpeechDataset
+from tts.tasks.fs2 import FastSpeech2Task
 
 import numpy as np
 import os
@@ -273,20 +273,14 @@ class OpencpopDataset(FastSpeechDataset):
 class DiffSingerMIDITask(DiffSingerTask):
     def __init__(self):
         super(DiffSingerMIDITask, self).__init__()
-        # self.dataset_cls = MIDIDataset
         self.dataset_cls = OpencpopDataset
 
     def run_model(self, model, sample, return_output=False, infer=False):
         txt_tokens = sample['txt_tokens']  # [B, T_t]
         target = sample['mels']  # [B, T_s, 80]
-        # mel2ph = sample['mel2ph'] if hparams['use_gt_dur'] else None # [B, T_s]
-        mel2ph = sample['mel2ph']
-        if hparams.get('switch_midi2f0_step') is not None and self.global_step > hparams['switch_midi2f0_step']:
-            f0 = None
-            uv = None
-        else:
-            f0 = sample['f0']
-            uv = sample['uv']
+        mel2ph = sample['mel2ph'] # [B, T_s]
+        f0 = sample['f0']
+        uv = sample['uv']
         energy = sample['energy']
 
         spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
@@ -482,8 +476,6 @@ class AuxDecoderMIDITask(FastSpeech2Task):
         outputs['nsamples'] = sample['nsamples']
         mel_out = self.model.out2mel(model_out['mel_out'])
         outputs = utils.tensors_to_scalars(outputs)
-        # if sample['mels'].shape[0] == 1:
-        #     self.add_laplace_var(mel_out, sample['mels'], outputs)
         if batch_idx < hparams['num_valid_plots']:
             self.plot_mel(batch_idx, sample['mels'], mel_out)
             self.plot_dur(batch_idx, sample, model_out)

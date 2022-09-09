@@ -481,7 +481,10 @@ class Swish(torch.autograd.Function):
 class CustomSwish(nn.Module):
     def forward(self, input_tensor):
         return Swish.apply(input_tensor)
-
+        
+class Mish(nn.Module):
+    def forward(self, x):
+        return x * torch.tanh(F.softplus(x))
 
 class TransformerFFNLayer(nn.Module):
     def __init__(self, hidden_size, filter_size, padding="SAME", kernel_size=1, dropout=0., act='gelu'):
