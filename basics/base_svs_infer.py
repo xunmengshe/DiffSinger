@@ -1,3 +1,22 @@
+'''
+    Base class for SVS inference models.
+    1. *example_run* and *infer_once*:
+        the overall pipeline;
+    2. *preprocess_word_level_input* and *preprocess_phoneme_level_input*:
+        preprocess words or phonemes (depends on the input format);
+    3. *input_to_batch*:
+        convert the (single) input into a single batch;
+    4. *build_vocoder* and *run_vocoder*:
+        a HifiGAN vocoder.
+
+    Subclasses should define:
+    1. *build_model*:
+        how to build the model;
+    2. *forward_model*:
+        how to run the model (typically, generate a mel-spectrogram and
+        pass it to the pre-built vocoder).
+'''
+
 # coding=utf8
 import os
 
@@ -17,20 +36,6 @@ import re
 
 
 class BaseSVSInfer:
-    '''
-        BaseSVSInfer is an interface for all SVS inference models.
-        It provides some shared basic functions such as:
-        1. the overall pipeline, in *example_run()*;
-        2. preprocessing words or phonemes (depending on the input format),
-           in *preprocess_word_level_input()* and *preprocess_phoneme_level_input()*;
-        3. converting the (single) input into a single batch, in *input_to_batch()*;
-        4. a HifiGAN vocoder, in *build_vocoder()* and *run_vocoder()*.
-
-        Any SVS inference model is a subclass of BaseSVSInfer and should define:
-        1. how to build the model, in *build_model()*;
-        2. how to run the model, in *forward_model()*
-           (typically, generate a mel-spectrogram and pass it to the pre-built vocoder).
-    '''
     def __init__(self, hparams, device=None):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'

@@ -1,8 +1,27 @@
-import glob
-import re
-import shutil
-import subprocess
+'''
+    Base class for training tasks.
+    1. *load_ckpt*:
+        load checkpoint;
+    2. *training_step*:
+        record and log the loss;
+    3. *optimizer_step*:
+        run backwards step;
+    4. *start*:
+        load training configs, backup code, log to tensorboard, start training;
+    5. *configure_ddp* and *init_ddp_connection*:
+        start parallel training.
+
+    Subclasses should define:
+    1. *build_model*, *build_optimizer*, *build_scheduler*:
+        how to build the model, the optimizer and the training scheduler;
+    2. *_training_step*:
+        one training step of the model;
+    3. *validation_end* and *_validation_end*:
+        postprocess the validation output.
+'''
+
 from datetime import datetime
+import shutil
 
 import matplotlib
 
@@ -26,54 +45,6 @@ torch.multiprocessing.set_sharing_strategy(os.getenv('TORCH_SHARE_STRATEGY', 'fi
 log_format = '%(asctime)s %(message)s'
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format=log_format, datefmt='%m/%d %I:%M:%S %p')
-
-
-class BaseDataset(torch.utils.data.Dataset):
-    def __init__(self, shuffle):
-        super().__init__()
-        self.hparams = hparams
-        self.shuffle = shuffle
-        self.sort_by_len = hparams['sort_by_len']
-        self.sizes = None
-
-    @property
-    def _sizes(self):
-        return self.sizes
-
-    def __getitem__(self, index):
-        raise NotImplementedError
-
-    def collater(self, samples):
-        raise NotImplementedError
-
-    def __len__(self):
-        return len(self._sizes)
-
-    def num_tokens(self, index):
-        return self.size(index)
-
-    def size(self, index):
-        """Return an example's size as a float or tuple. This value is used when
-        filtering a dataset with ``--max-positions``."""
-        size = min(self._sizes[index], hparams['max_frames'])
-        return size
-
-    def ordered_indices(self):
-        """Return an ordered list of indices. Batches will be constructed based
-        on this order."""
-        if self.shuffle:
-            indices = np.random.permutation(len(self))
-            if self.sort_by_len:
-                indices = indices[np.argsort(np.array(self._sizes)[indices], kind='mergesort')]
-                # 先random, 然后稳定排序, 保证排序后同长度的数据顺序是依照random permutation的 (被其随机打乱).
-        else:
-            indices = np.arange(len(self))
-        return indices
-
-    @property
-    def num_workers(self):
-        return int(os.getenv('NUM_WORKERS', hparams['ds_workers']))
-
 
 class BaseTask(nn.Module):
     def __init__(self, *args, **kwargs):
@@ -248,7 +219,7 @@ class BaseTask(nn.Module):
                                   'validate'] else 10000,
                               accumulate_grad_batches=hparams['accumulate_grad_batches'])
         if not hparams['infer']:  # train
-            copy_code = input('Code backup? y/n: ') == 'y'
+            copy_code = input(f'{hparams["save_codes"]} code backup? y/n: ') == 'y'
             if copy_code:
                 t = datetime.now().strftime('%Y%m%d%H%M%S')
                 code_dir = f'{work_dir}/codes/{t}'

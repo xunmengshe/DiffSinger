@@ -9,7 +9,7 @@ test_num: 0
 valid_num: 0
 
 pre_align_cls: data_gen.singing.pre_align.SingingPreAlign
-binarizer_cls: data_gen.singing.binarize.SingingBinarizer
+binarizer_cls: data_gen.singing.singing.SingingBinarizer
 pre_align_args:
   use_tone: false # for ZH
   forced_align: mfa

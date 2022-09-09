@@ -16,7 +16,7 @@ binarization_args:
   with_align: true
 raw_data_dir: 'data/raw/opencpop/segments'
 processed_data_dir: 'xxx'
-binarizer_cls: data_gen.singing.binarize.OpencpopBinarizer
+binarizer_cls: data_gen.singing.opencpop.OpencpopBinarizer
 
 
 binary_data_dir: 'data/binary/opencpop-midi-dp'

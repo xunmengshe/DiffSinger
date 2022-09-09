@@ -7,7 +7,6 @@ local_tools/
 *.pth
 *.wav
 infer_out/
-config.yaml
 *.onnx
 data/
 checkpoints/
