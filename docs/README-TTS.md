@@ -16,7 +16,7 @@ c) Run the following scripts to pack the dataset for training/inference.
 
 ```sh
 export PYTHONPATH=.
-CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config configs/tts/lj/fs2.yaml
+CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config tts/configs/lj/fs2.yaml
 
 # `tts/data/binary/raw/` will be generated.
 ```
@@ -29,19 +29,19 @@ Please unzip this file into `checkpoints` before training your acoustic model.
 
 First, you need a pre-trained FastSpeech2 checkpoint. You can use the [pre-trained model](https://github.com/MoonInTheRiver/DiffSinger/releases/download/pretrain-model/fs2_lj_1.zip), or train FastSpeech2 from scratch, run:
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/tts/lj/fs2.yaml --exp_name fs2_lj_1 --reset
+CUDA_VISIBLE_DEVICES=0 python run.py --config tts/configs/lj/fs2.yaml --exp_name fs2_lj_1 --reset
 ```
 Then, to train DiffSpeech, run:
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/lj_ds_beta6.yaml --exp_name lj_ds_beta6_1213 --reset
+CUDA_VISIBLE_DEVICES=0 python run.py --config tts/configs/lj_ds_beta6.yaml --exp_name lj_ds_beta6_1213 --reset
 ```
 
-Remember to adjust the "fs2_ckpt" parameter in `configs/lj_ds_beta6.yaml` to fit your path.
+Remember to adjust the "fs2_ckpt" parameter in `tts/configs/lj_ds_beta6.yaml` to fit your path.
 
 ### 3. Inference Example
 
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/lj_ds_beta6.yaml --exp_name lj_ds_beta6_1213 --reset --infer
+CUDA_VISIBLE_DEVICES=0 python run.py --config tts/configs/lj_ds_beta6.yaml --exp_name lj_ds_beta6_1213 --reset --infer
 ```
 
 We also provide:

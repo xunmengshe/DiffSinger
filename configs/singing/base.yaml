@@ -1,6 +1,6 @@
 base_config:
-  - configs/tts/base.yaml
-  - configs/tts/base_zh.yaml
+  - tts/configs/base.yaml
+  - tts/configs/base_zh.yaml
 
 
 datasets: []
