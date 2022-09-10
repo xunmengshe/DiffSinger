@@ -234,7 +234,7 @@ class GaussianDiffusion(nn.Module):
                 ref_mels=None, f0=None, uv=None, energy=None, infer=False, **kwargs):
         b, *_, device = *txt_tokens.shape, txt_tokens.device
         ret = self.fs2(txt_tokens, mel2ph, spk_embed, ref_mels, f0, uv, energy,
-                       skip_decoder=(not infer), infer=infer, **kwargs)
+                       skip_decoder=True, infer=infer, **kwargs)
         cond = ret['decoder_inp'].transpose(1, 2)
 
         if not infer:
