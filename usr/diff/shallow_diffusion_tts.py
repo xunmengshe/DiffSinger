@@ -265,7 +265,7 @@ class GaussianDiffusion(nn.Module):
             x = torch.randn(shape, device=device)
             self.noise_list = deque(maxlen=4)
             iteration_interval = 5
-            for i in tqdm(reversed(range(0, t, iteration_interval)), desc='sample time step', total=t):
+            for i in tqdm(reversed(range(0, t, iteration_interval)), desc='sample time step', total=t // iteration_interval):
                 x = self.p_sample_plms(x, torch.full((b,), i, device=device, dtype=torch.long), iteration_interval, cond)
             x = x[:, 0].transpose(1, 2)
             if mel2ph is not None:  # for singing
