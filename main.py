@@ -22,6 +22,7 @@ parser.add_argument('--out', type=str, required=False, help='Path of the output 
 parser.add_argument('--title', type=str, required=False, help='Title of output file')
 parser.add_argument('--num', type=int, default=1, help='Number of runs')
 parser.add_argument('--seed', type=int, help='Random seed of the inference')
+parser.add_argument('--speedup', type=int, default=0, help='PNDM speed-up ratio')
 args = parser.parse_args()
 
 name = os.path.basename(args.proj).split('.')[0] if not args.title else args.title
@@ -45,6 +46,9 @@ sys.argv = [
     '--exp_name',
     exp
 ]
+
+if args.speedup > 0:
+    sys.argv += ['--hparams', f'pndm_speedup={args.speedup}']
 
 if not isinstance(params, list):
     params = [params]

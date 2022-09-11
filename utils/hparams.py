@@ -89,6 +89,8 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     if args.hparams != "":
         for new_hparam in args.hparams.split(","):
             k, v = new_hparam.split("=")
+            if k not in hparams_:
+                hparams_[k] = eval(v)
             if v in ['True', 'False'] or type(hparams_[k]) == bool:
                 hparams_[k] = eval(v)
             else:
