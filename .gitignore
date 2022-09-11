@@ -9,6 +9,8 @@ local_tools/
 infer_out/
 config.yaml
 *.onnx
+checkpoints/
+data/
 
 .vscode
 WPy64-38100
