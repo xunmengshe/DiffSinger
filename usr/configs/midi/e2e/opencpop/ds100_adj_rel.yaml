@@ -23,6 +23,7 @@ K_step: 100
 max_tokens: 40000
 max_updates: 160000
 gaussian_start: True
+pndm_speedup: 1
 
 use_pitch_embed: false
 use_gt_f0: false  #  for midi exp
