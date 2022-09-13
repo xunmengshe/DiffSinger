@@ -2,7 +2,7 @@ import re
 import jieba
 from pypinyin import pinyin, Style
 from data_gen.data_gen_utils import PUNCS
-from data_gen.tts.txt_processors import zh
+from tts.data_gen.txt_processors import zh
 from g2pM import G2pM
 
 ALL_SHENMU = ['zh', 'ch', 'sh', 'b', 'p', 'm', 'f', 'd', 't', 'n', 'l', 'g', 'k', 'h', 'j',

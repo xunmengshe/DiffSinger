@@ -1,7 +1,7 @@
 raw_data_dir: 'tts/data/raw/ljspeech-1.1'
 processed_data_dir: 'tts/data/processed/ljspeech'
 binary_data_dir: 'tts/data/binary/raw/'
-pre_align_cls: data_gen.tts.lj.pre_align.LJPreAlign
+pre_align_cls: tts.data_gen.lj.pre_align.LJPreAlign
 
 pitch_type: cwt
 mel_loss: l1

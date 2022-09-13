@@ -6,7 +6,7 @@ from g2p_en.expand import normalize_numbers
 from nltk import pos_tag
 from nltk.tokenize import TweetTokenizer
 
-from data_gen.tts.txt_processors.base_text_processor import BaseTxtProcessor
+from tts.data_gen.txt_processors.base_text_processor import BaseTxtProcessor
 
 
 class EnG2p(G2p):

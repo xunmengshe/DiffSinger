@@ -2,7 +2,7 @@ base_config:
   - configs/popcs_ds_beta6.yaml
   - configs/midi/cascade/popcs/popcs_statis.yaml
 
-binarizer_cls: data_gen.singing.midisinging.MidiSingingBinarizer
+binarizer_cls: data_gen.midisinging.MidiSingingBinarizer
 binary_data_dir: 'data/binary/popcs-midi-dp'
 
 #switch_midi2f0_step: 174000

@@ -20,8 +20,8 @@ from utils.hparams import hparams
 from data_gen.data_gen_utils import build_phone_encoder, get_pitch_parselmouth
 from utils.pitch_utils import f0_to_coarse
 from basics.base_binarizer import BaseBinarizer, BinarizationError, BASE_ITEM_ATTRIBUTES
-from data_gen.tts.binarizer_zh import ZhBinarizer
-from data_gen.tts.txt_processors.zh_g2pM import ALL_YUNMU
+from tts.data_gen.binarizer_zh import ZhBinarizer
+from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
 from src.vocoders.base_vocoder import VOCODERS
 
 SINGING_ITEM_ATTRIBUTES = BASE_ITEM_ATTRIBUTES + ['f0_fn']

@@ -309,6 +309,11 @@ class FFTBlocks(nn.Module):
 
 
 class FastspeechEncoder(FFTBlocks):
+    '''
+        compared to FFTBlocks:
+        - input is [B, T], not [B, T, C]
+        - supports "relative" positional encoding
+    '''
     def __init__(self, embed_tokens, hidden_size=None, num_layers=None, kernel_size=None, num_heads=2):
         hidden_size = hparams['hidden_size'] if hidden_size is None else hidden_size
         kernel_size = hparams['enc_ffn_kernel_size'] if kernel_size is None else kernel_size

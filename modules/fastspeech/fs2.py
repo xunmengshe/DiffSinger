@@ -164,10 +164,6 @@ class FastSpeech2(nn.Module):
             ret['dur'] = xs
             ret['dur_choice'] = dur
             mel2ph = self.length_regulator(dur, src_padding).detach()
-            # from modules.fastspeech.fake_modules import FakeLengthRegulator
-            # fake_lr = FakeLengthRegulator()
-            # fake_mel2ph = fake_lr(dur, (1 - src_padding.long()).sum(-1))[..., 0].detach()
-            # print(mel2ph == fake_mel2ph)
         else:
             ret['dur'] = self.dur_predictor(dur_input, src_padding)
         ret['mel2ph'] = mel2ph

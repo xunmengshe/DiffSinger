@@ -1,11 +1,11 @@
 from typing import DefaultDict
-from data_gen.singing.singing import SingingBinarizer, SINGING_ITEM_ATTRIBUTES
+from data_gen import SingingBinarizer, SINGING_ITEM_ATTRIBUTES
 import os
 import json
 import numpy as np
 
 from utils.hparams import hparams
-from data_gen.tts.txt_processors.zh_g2pM import ALL_YUNMU
+from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
 
 MIDISINGING_ITEM_ATTRIBUTES = SINGING_ITEM_ATTRIBUTES + ['pitch_midi', 'midi_dur', 'is_slur', 'ph_durs', 'word_boundary']
 

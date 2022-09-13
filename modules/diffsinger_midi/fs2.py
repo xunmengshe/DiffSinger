@@ -7,12 +7,19 @@ from utils.hparams import hparams
 from utils.pitch_utils import f0_to_coarse, denorm_f0, norm_f0
 from modules.fastspeech.fs2 import FastSpeech2
 from utils.text_encoder import TokenTextEncoder
-from data_gen.tts.txt_processors.zh_g2pM import ALL_YUNMU
+from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
 from torch.nn import functional as F
 import torch
 
 
 class FastspeechMIDIEncoder(FastspeechEncoder):
+    '''
+        compared to FastspeechEncoder:
+        - adds new input items (midi, midi_dur, slur)
+
+        but these are same:
+        - positional encoding
+    '''
     def forward_embedding(self, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding):
         # embed tokens and positions
         x = self.embed_scale * self.embed_tokens(txt_tokens)
