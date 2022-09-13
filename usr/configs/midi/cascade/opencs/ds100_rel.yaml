@@ -17,8 +17,8 @@ lambda_ph_dur: 0.3
 lambda_sent_dur: 3.0
 lambda_word_dur: 1.0
 predictor_grad: 0.1
-pe_enable: true
-pe_ckpt: 'checkpoints/0102_xiaoma_pe'
+#pe_enable: true
+#pe_ckpt: 'checkpoints/0102_xiaoma_pe'
 
 fs2_ckpt: ''  #
 #num_valid_plots: 0
