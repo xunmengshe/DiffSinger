@@ -135,13 +135,31 @@ class FastSpeech2MIDI(FastSpeech2):
         decoder_inp_origin = decoder_inp = torch.gather(decoder_inp, 1, mel2ph_)  # [B, T, H]
 
         tgt_nonpadding = (mel2ph > 0).float()[:, :, None]
-
+        
         # add pitch and energy embed
         pitch_inp = (decoder_inp_origin + var_embed + spk_embed_f0) * tgt_nonpadding
+        nframes = mel2ph.size(1)
+        
         if hparams['use_pitch_embed']:
             pitch_inp_ph = (encoder_out + var_embed + spk_embed_f0) * src_nonpadding
+            if f0 is not None:
+                delta_l = nframes - f0.size(1)
+                if delta_l > 0:
+                    f0 = torch.cat((f0,torch.FloatTensor([[x[-1]] * delta_l for x in f0]).to(f0.get_device())),1)
+                f0 = f0[:,:nframes]
+            if uv is not None:
+                delta_l = nframes - uv.size(1)
+                if delta_l > 0:
+                    uv = torch.cat((uv,torch.FloatTensor([[x[-1]] * delta_l for x in uv]).to(uv.get_device())),1)
+                uv = uv[:,:nframes]
             decoder_inp = decoder_inp + self.add_pitch(pitch_inp, f0, uv, mel2ph, ret, encoder_out=pitch_inp_ph)
+            
         if hparams['use_energy_embed']:
+            if energy is not None:
+                delta_l = nframes - energy.size(1)
+                if delta_l > 0:
+                    energy = torch.cat((energy,torch.FloatTensor([[x[-1]] * delta_l for x in energy]).to(energy.get_device())),1)
+                energy = energy[:,:nframes]
             decoder_inp = decoder_inp + self.add_energy(pitch_inp, energy, ret)
 
         ret['decoder_inp'] = decoder_inp = (decoder_inp + spk_embed) * tgt_nonpadding
