@@ -97,6 +97,13 @@ class FastSpeech2MIDI(FastSpeech2):
     def forward(self, txt_tokens, mel2ph=None, spk_embed=None,
                 ref_mels=None, f0=None, uv=None, energy=None, skip_decoder=False,
                 spk_embed_dur_id=None, spk_embed_f0_id=None, infer=False, **kwargs):
+        '''
+            steps:
+            1. embedding: midi_embedding, midi_dur_embedding, slur_embedding
+            2. run encoder (a Transformer) using txt_tokens and embeddings
+            3. run dur_predictor in add_dur using encoder_out, get ret['dur'] and ret['mel2ph']
+            4. run decoder (skipped for diffusion)
+        '''
         ret = {}
 
         midi_embedding = self.midi_embed(kwargs['pitch_midi'])

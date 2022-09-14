@@ -276,6 +276,11 @@ class DiffSingerMIDITask(DiffSingerTask):
         self.dataset_cls = OpencpopDataset
 
     def run_model(self, model, sample, return_output=False, infer=False):
+        '''
+            steps:
+            1. run the full model
+            2. calculate loss for dur_predictor
+        '''
         txt_tokens = sample['txt_tokens']  # [B, T_t]
         target = sample['mels']  # [B, T_s, 80]
         mel2ph = sample['mel2ph'] # [B, T_s]
@@ -344,11 +349,16 @@ class DiffSingerMIDITask(DiffSingerTask):
 
     def add_dur_loss(self, dur_pred, mel2ph, txt_tokens, wdb, losses=None):
         """
-        :param dur_pred: [B, T], float, log scale
-        :param mel2ph: [B, T]
-        :param txt_tokens: [B, T]
-        :param losses:
-        :return:
+            the effect of each loss component:
+                hparams['dur_loss'] : align each phoneme
+                hparams['lambda_word_dur']: align each word
+                hparams['lambda_sent_dur']: align each sentence
+            
+            :param dur_pred: [B, T], float, log scale
+            :param mel2ph: [B, T]
+            :param txt_tokens: [B, T]
+            :param losses:
+            :return:
         """
         B, T = txt_tokens.shape
         nonpadding = (txt_tokens != 0).float()
