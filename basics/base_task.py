@@ -219,7 +219,8 @@ class BaseTask(nn.Module):
                                   'validate'] else 10000,
                               accumulate_grad_batches=hparams['accumulate_grad_batches'])
         if not hparams['infer']:  # train
-            copy_code = input(f'{hparams["save_codes"]} code backup? y/n: ') == 'y'
+            # copy_code = input(f'{hparams["save_codes"]} code backup? y/n: ') == 'y'
+            copy_code = False # do not copy code
             if copy_code:
                 t = datetime.now().strftime('%Y%m%d%H%M%S')
                 code_dir = f'{work_dir}/codes/{t}'
