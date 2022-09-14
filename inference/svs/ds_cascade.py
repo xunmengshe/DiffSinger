@@ -139,7 +139,7 @@ class DiffSingerCascadeInfer(BaseSVSInfer):
             t_max = (len(f0_seq)-1)*f0_timestep
             dt = hparams['hop_size']/hparams['audio_sample_rate']
             f0_interp = np.interp(np.arange(0,t_max,dt), f0_timestep*np.arange(len(f0_seq)),f0_seq)
-            log2f0 = torch.FloatTensor(np.log2(f0_interp))[None, :hparams['max_frames']].to(self.device)
+            log2f0 = torch.FloatTensor(np.log2(f0_interp))[None, :].to(self.device)
         else:
             print('Using automaic pitch curve')
 
