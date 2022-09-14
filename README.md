@@ -5,6 +5,21 @@ This is a cleaner version of Diffsinger, which provides:
 - abstract classes: the bass classes are filtered out into the "basics/" folder and are annotated. Other classes inherent from the base classes.
 - better file structre: tts-related files are filtered out into the "tts/" folder, as they are not used in DiffSinger.
 
+Getting Started:
+1. Preprocessing
+```sh
+export PYTHONPATH=.
+CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config configs/midi/cascade/opencs/aux_rel.yaml
+```
+2. Training
+```sh
+CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_adj_rel.yaml --exp_name $MY_DS_EXP_NAME --reset  
+```
+3. Inference
+```sh
+CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_adj_rel.yaml --exp_name $MY_DS_EXP_NAME --reset --infer
+```
+
 # DiffSinger: Singing Voice Synthesis via Shallow Diffusion Mechanism
 [![arXiv](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/abs/2105.02446)
 [![GitHub Stars](https://img.shields.io/github/stars/MoonInTheRiver/DiffSinger?style=social)](https://github.com/MoonInTheRiver/DiffSinger)
@@ -15,7 +30,7 @@ This is a cleaner version of Diffsinger, which provides:
 
 
 This repository is the official PyTorch implementation of our AAAI-2022 [paper](https://arxiv.org/abs/2105.02446), in which we propose DiffSinger (for Singing-Voice-Synthesis) and DiffSpeech (for Text-to-Speech).
- 
+
 <table style="width:100%">
   <tr>
     <th>DiffSinger/DiffSpeech at training</th>
