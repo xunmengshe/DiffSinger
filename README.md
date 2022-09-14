@@ -1,3 +1,10 @@
+# Usage of Refactor Branch
+This is a cleaner version of Diffsinger, which provides:
+- fewer code: scripts unused in the DiffSinger are marked **\*isolated\***;
+- better readability: many important functions are annotated (however, **we assume the reader already knows how the neural networks work**);
+- abstract classes: the bass classes are filtered out into the "basics/" folder and are annotated. Other classes inherent from the base classes.
+- better file structre: tts-related files are filtered out into the "tts/" folder, as they are not used in DiffSinger.
+
 # DiffSinger: Singing Voice Synthesis via Shallow Diffusion Mechanism
 [![arXiv](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/abs/2105.02446)
 [![GitHub Stars](https://img.shields.io/github/stars/MoonInTheRiver/DiffSinger?style=social)](https://github.com/MoonInTheRiver/DiffSinger)

@@ -13,6 +13,8 @@ DIFF_DECODERS = {
 
 class DiffFsTask(FastSpeech2Task):
     def build_tts_model(self):
+        # NOTE: this function is *isolated* from other scripts, which means
+        # it may not be compatible with the current version.
         return
         from src.diff.diffusion_ import GaussianDiffusion
         mel_bins = hparams['audio_num_mel_bins']

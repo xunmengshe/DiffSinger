@@ -31,7 +31,10 @@ def Conv1d(*args, **kwargs):
     return layer
 
 
-class FFT(FastspeechDecoder):
+class FFT(FastspeechDecoder): # unused, because DiffSinger only uses FastspeechEncoder
+    # NOTE: this part of script is *isolated* from other scripts, which means
+    #       it may not be compatible with the current version.
+    
     def __init__(self, hidden_size=None, num_layers=None, kernel_size=None, num_heads=None):
         super().__init__(hidden_size, num_layers, kernel_size, num_heads=num_heads)
         dim = hparams['residual_channels']
