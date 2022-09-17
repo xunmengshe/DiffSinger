@@ -25,7 +25,6 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 from utils.multiprocess_utils import chunked_multiprocess_run
 import random
-import traceback
 import json
 from resemblyzer import VoiceEncoder
 from tqdm import tqdm
@@ -33,8 +32,6 @@ from data_gen.data_gen_utils import get_mel2ph, get_pitch_parselmouth, build_pho
 from utils.hparams import set_hparams, hparams
 import numpy as np
 from utils.indexed_datasets import IndexedDatasetBuilder
-from src.vocoders.base_vocoder import VOCODERS
-import pandas as pd
 
 
 class BinarizationError(Exception):
@@ -97,6 +94,9 @@ class BaseBinarizer:
         return self.spk_map[self.items[item_name]['spk_id']]
 
     def _phone_encoder(self):
+        '''
+            create 'phone_set.json' file if it doesn't exist
+        '''
         ph_set_fn = f"{hparams['binary_data_dir']}/phone_set.json"
         ph_set = []
         if hparams['reset_phone_dict'] or not os.path.exists(ph_set_fn):
@@ -146,7 +146,7 @@ class BaseBinarizer:
             voice_encoder = VoiceEncoder().cuda()
 
         for item_name, meta_data in self.meta_data_iterator(prefix):
-            args.append([item_name, meta_data, self.phone_encoder, self.binarization_args])
+            args.append([item_name, meta_data, self.binarization_args])
         
         if multiprocess:
             # code for parallel processing
@@ -191,33 +191,9 @@ class BaseBinarizer:
             np.save(f'{data_dir}/{prefix}_f0s_mean_std.npy', [np.mean(f0s).item(), np.std(f0s).item()])
         print(f"| {prefix} total duration: {total_sec:.3f}s")
 
-    def process_item(self, item_name, meta_data, encoder, binarization_args):
-        if hparams['vocoder'] in VOCODERS:
-            wav, mel = VOCODERS[hparams['vocoder']].wav2spec(meta_data['wav_fn'])
-        else:
-            wav, mel = VOCODERS[hparams['vocoder'].split('.')[-1]].wav2spec(meta_data['wav_fn'])
-        res = {
-            'item_name': item_name, 'mel': mel, 'wav': wav,
-            'sec': len(wav) / hparams['audio_sample_rate'], 'len': mel.shape[0]
-        }
-        res = {**res, **meta_data} # merge two dicts
-        try:
-            if binarization_args['with_f0']:
-                self.get_pitch(wav, mel, res)
-                if binarization_args['with_f0cwt']:
-                    self.get_f0cwt(res['f0'], res)
-            if binarization_args['with_txt']:
-                try:
-                    phone_encoded = res['phone'] = encoder.encode(meta_data['ph'])
-                except:
-                    traceback.print_exc()
-                    raise BinarizationError(f"Empty phoneme")
-                if binarization_args['with_align']:
-                    self.get_align(meta_data, mel, phone_encoded, res)
-        except BinarizationError as e:
-            print(f"| Skip item ({e}). item_name: {item_name}, wav_fn: {meta_data['wav_fn']}")
-            return None
-        return res
+    def process_item(self, item_name, meta_data, binarization_args):
+        from opencpop_e2e_pipelines.file2batch import File2Batch
+        return File2Batch.temporary_dict2processed_input(item_name, meta_data, self.phone_encoder, binarization_args)
 
     def get_align(self, meta_data, mel, phone_encoded, res):
         raise NotImplementedError
@@ -235,14 +211,6 @@ class BaseBinarizer:
                 f"Align does not match: mel2ph.max() - 1: {mel2ph.max() - 1}, len(phone_encoded): {len(phone_encoded)}")
         res['mel2ph'] = mel2ph
         res['dur'] = dur
-
-    def get_pitch(self, wav, mel, res):
-        # get ground truth f0 by self.get_pitch_algorithm
-        gt_f0, gt_pitch_coarse = self.get_pitch_algorithm(wav, mel, hparams)
-        if sum(gt_f0) == 0:
-            raise BinarizationError("Empty **gt** f0")
-        res['f0'] = gt_f0
-        res['pitch'] = gt_pitch_coarse
 
     def get_f0cwt(self, f0, res):
         # NOTE: this part of script is *isolated* from other scripts, which means

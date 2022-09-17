@@ -100,19 +100,20 @@ class FastSpeech2MIDI(FastSpeech2):
         '''
             steps:
             1. embedding: midi_embedding, midi_dur_embedding, slur_embedding
-            2. run encoder (a Transformer) using txt_tokens and embeddings
-            3. run dur_predictor in add_dur using encoder_out, get ret['dur'] and ret['mel2ph']
+            2. run self.encoder (a Transformer) using txt_tokens and embeddings
+            3. run *dur_predictor* in *add_dur* using *encoder_out*, get *ret['dur']* and *ret['mel2ph']*
             4. run decoder (skipped for diffusion)
         '''
         ret = {}
 
-        midi_embedding = self.midi_embed(kwargs['pitch_midi'])
-        midi_dur_embedding, slur_embedding = 0, 0
-        if kwargs.get('midi_dur') is not None:
-            midi_dur_embedding = self.midi_dur_layer(kwargs['midi_dur'][:, :, None])  # [B, T, 1] -> [B, T, H]
-        if kwargs.get('is_slur') is not None:
-            slur_embedding = self.is_slur_embed(kwargs['is_slur'])
-        encoder_out = self.encoder(txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, C]
+        from opencpop_e2e_pipelines.batch2result import Batch2Result
+        midi_embedding, midi_dur_embedding, slur_embedding = Batch2Result.insert1(
+            kwargs['pitch_midi'], kwargs.get('midi_dur', None), kwargs.get('is_slur', None),
+            self.midi_embed, self.midi_dur_layer, self.is_slur_embed
+        )
+
+        encoder_out = Batch2Result.module1(self.encoder, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, C]
+        
         src_nonpadding = (txt_tokens > 0).float()[:, :, None]
 
         # add ref style embed

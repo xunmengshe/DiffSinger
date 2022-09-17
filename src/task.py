@@ -27,6 +27,10 @@ class DiffFsTask(FastSpeech2Task):
         )
 
     def run_model(self, model, sample, return_output=False, infer=False):
+        '''
+            NOTE: this function is *isolated* from other scripts, which means
+                  it may not be compatible with the current version.
+        '''
         txt_tokens = sample['txt_tokens']  # [B, T_t]
         target = sample['mels']  # [B, T_s, 80]
         mel2ph = sample['mel2ph']  # [B, T_s]

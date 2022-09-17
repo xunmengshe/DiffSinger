@@ -61,7 +61,7 @@ class BaseTask(nn.Module):
         self.example_input_array = None
 
         self.max_tokens = hparams['max_tokens']
-        self.max_sentences = hparams['max_sentences']
+        self.max_sentences = hparams['batch_size']
         self.max_eval_tokens = hparams['max_eval_tokens']
         if self.max_eval_tokens == -1:
             hparams['max_eval_tokens'] = self.max_eval_tokens = self.max_tokens

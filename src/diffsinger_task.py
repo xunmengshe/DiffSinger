@@ -262,12 +262,8 @@ class OpencpopDataset(FastSpeechDataset):
         return sample
 
     def collater(self, samples):
-        batch = super(OpencpopDataset, self).collater(samples)
-        batch['pitch_midi'] = utils.collate_1d([s['pitch_midi'] for s in samples], 0)
-        batch['midi_dur'] = utils.collate_1d([s['midi_dur'] for s in samples], 0)
-        batch['is_slur'] = utils.collate_1d([s['is_slur'] for s in samples], 0)
-        batch['word_boundary'] = utils.collate_1d([s['word_boundary'] for s in samples], 0)
-        return batch
+        from opencpop_e2e_pipelines.file2batch import File2Batch
+        return File2Batch.processed_input2batch(samples)
 
 
 class DiffSingerMIDITask(DiffSingerTask):

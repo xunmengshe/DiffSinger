@@ -52,31 +52,5 @@ class OpencpopBinarizer(MidiSingingBinarizer):
         return train_item_names, test_item_names
 
     def load_meta_data(self, processed_data_dir, ds_id):
-        del processed_data_dir, ds_id # unused
-
-        raw_data_dir = hparams['raw_data_dir']
-        # meta_midi = json.load(open(os.path.join(raw_data_dir, 'meta.json')))   # [list of dict]
-        utterance_labels = open(os.path.join(raw_data_dir, 'transcriptions.txt'), encoding='utf-8').readlines()
-
-        for utterance_label in utterance_labels:
-            song_info = utterance_label.split('|')
-            item_name = raw_item_name = song_info[0]
-            item = {}
-
-            item['wav_fn'] = f'{raw_data_dir}/wavs/{item_name}.wav'
-            item['txt'] = song_info[1]
-
-            item['ph'] = song_info[2]
-            # self.item2wdb[item_name] = list(np.nonzero([1 if x in ALL_YUNMU + ['AP', 'SP'] else 0 for x in song_info[2].split()])[0])
-            item['word_boundary'] = np.array([1 if x in ALL_YUNMU + ['AP', 'SP'] else 0 for x in song_info[2].split()])
-            item['ph_durs'] = [float(x) for x in song_info[5].split(" ")]
-
-            item['pitch_midi'] = np.array([librosa.note_to_midi(x.split("/")[0]) if x != 'rest' else 0
-                                   for x in song_info[3].split(" ")])
-            item['midi_dur'] = np.array([float(x) for x in song_info[4].split(" ")])
-            item['is_slur'] = np.array([int(x) for x in song_info[6].split(" ")])
-            item['spk_id'] = 'opencpop'
-            assert item['pitch_midi'].shape == item['midi_dur'].shape == item['is_slur'].shape, \
-                (item['pitch_midi'].shape, item['midi_dur'].shape, item['is_slur'].shape)
-
-            self.items[item_name] = item
+        from opencpop_e2e_pipelines.file2batch import File2Batch
+        self.items = File2Batch.file2temporary_dict()

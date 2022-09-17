@@ -1,5 +1,5 @@
 from typing import DefaultDict
-from data_gen import SingingBinarizer, SINGING_ITEM_ATTRIBUTES
+from data_gen.singing import SingingBinarizer, SINGING_ITEM_ATTRIBUTES
 import os
 import json
 import numpy as np
@@ -40,18 +40,3 @@ class MidiSingingBinarizer(SingingBinarizer):
             
             self.items[item_name] = item
 
-    def get_align(self, meta_data, mel, phone_encoded, res, hop_size=hparams['hop_size'], audio_sample_rate=hparams['audio_sample_rate']):
-        mel2ph = np.zeros([mel.shape[0]], int)
-        startTime = 0
-        ph_durs = meta_data['ph_durs']
-
-        for i_ph in range(len(ph_durs)):
-            start_frame = int(startTime * audio_sample_rate / hop_size + 0.5)
-            end_frame = int((startTime + ph_durs[i_ph]) * audio_sample_rate / hop_size + 0.5)
-            mel2ph[start_frame:end_frame] = i_ph + 1
-            startTime = startTime + ph_durs[i_ph]
-
-        # print('ph durs: ', ph_durs)
-        # print('mel2ph: ', mel2ph, len(mel2ph))
-        res['mel2ph'] = mel2ph
-        # res['dur'] = None

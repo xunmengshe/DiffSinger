@@ -4,7 +4,7 @@ import torch
 from basics.base_svs_infer import BaseSVSInfer
 from utils import load_ckpt
 from utils.hparams import hparams
-from diff.diffusion import GaussianDiffusion
+from src.diff.diffusion import GaussianDiffusion
 from src.diffsinger_task import DIFF_DECODERS
 from modules.fastspeech.pe import PitchExtractor
 import utils
@@ -33,36 +33,15 @@ class DiffSingerE2EInfer(BaseSVSInfer):
             utils.load_ckpt(self.pe, hparams['pe_ckpt'], 'model', strict=True)
             self.pe.eval()
         return model
-
-    def preprocess_phoneme_level_input(self, inp):
-        ph_seq, note_lst, midi_dur_lst, is_slur = super().preprocess_phoneme_level_input(inp)
-
-        # add support for user-defined phone duration
-        ph_dur = None
-        if inp['ph_dur'] is not None:
-            ph_dur = np.array(inp['ph_dur'].split(),'float')
-        else:
-            print('Automatic phone duration mode')
         
-        return ph_seq, note_lst, midi_dur_lst, is_slur, ph_dur
-        
+    def preprocess_input(self, inp, input_type='word'):
+        from opencpop_e2e_pipelines.user_input2single_batch import UserInput2SingleBatch
+        temp_dict = UserInput2SingleBatch.user_input2temporary_dict(inp, input_type)
+        return UserInput2SingleBatch.temporary_dict2processed_input(temp_dict, self.ph_encoder)
+
     def input_to_batch(self, item):
-        batch = super().input_to_batch(item)
-        
-        # feed user-defined phone duration to a module called LengthRegular
-        # the output *mel2ph* will be used by FastSpeech
-        # note: LengthRegular is not a neural network, only FastSpeech is. (see https://arxiv.org/abs/1905.09263)
-        mel2ph = None
-        if item['ph_dur'] is not None:
-            ph_acc = np.around(np.add.accumulate(item['ph_dur']) * hparams['audio_sample_rate'] / hparams['hop_size'] + 0.5).astype('int')
-            ph_dur = np.diff(ph_acc, prepend=0)
-            ph_dur = torch.LongTensor(ph_dur)[None, :hparams['max_frames']].to(self.device)
-            lr = LengthRegulator()
-            mel2ph = lr(ph_dur, dur_padding=(batch['txt_tokens'] == 0)).detach()
-        
-        batch['mel2ph'] = mel2ph
-
-        return batch
+        from opencpop_e2e_pipelines.user_input2single_batch import UserInput2SingleBatch
+        return UserInput2SingleBatch.processed_input2single_batch(item, self.device)
 
     def forward_model(self, inp):
         sample = self.input_to_batch(inp)
