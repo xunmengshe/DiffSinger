@@ -4,6 +4,7 @@ This is a cleaner version of Diffsinger, which provides:
 - better readability: many important functions are annotated (however, **we assume the reader already knows how the neural networks work**);
 - abstract classes: the bass classes are filtered out into the "basics/" folder and are annotated. Other classes inherent from the base classes.
 - better file structre: tts-related files are filtered out into the "tts/" folder, as they are not used in DiffSinger.
+- **(new) Much condensed version of the preprocessing, training, and inference pipeline**. The preprocessing pipeline is at 'preprocessing/opencpop.py', the training pipeline is at 'training/diffsinger.py', the inference pipeline is at 'inference/ds_cascade.py' or 'inference/ds_e2e.py'.
 
 Getting Started:
 1. Preprocessing

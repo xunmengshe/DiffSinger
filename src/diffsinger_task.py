@@ -274,8 +274,8 @@ class DiffSingerMIDITask(DiffSingerTask):
     def run_model(self, model, sample, return_output=False, infer=False):
         '''
             steps:
-            1. run the full model
-            2. calculate loss for dur_predictor
+            1. run the full model, calc the main loss
+            2. calculate loss for dur_predictor, pitch_predictor, energy_predictor
         '''
         txt_tokens = sample['txt_tokens']  # [B, T_t]
         target = sample['mels']  # [B, T_s, 80]
@@ -286,13 +286,16 @@ class DiffSingerMIDITask(DiffSingerTask):
 
         spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
         if hparams['pitch_type'] == 'cwt':
-            cwt_spec = sample[f'cwt_spec']
-            f0_mean = sample['f0_mean']
-            f0_std = sample['f0_std']
-            sample['f0_cwt'] = f0 = model.cwt2f0_norm(cwt_spec, f0_mean, f0_std, mel2ph)
+            # NOTE: this part of script is *isolated* from other scripts, which means
+            #       it may not be compatible with the current version.    
+            pass
+            # cwt_spec = sample[f'cwt_spec']
+            # f0_mean = sample['f0_mean']
+            # f0_std = sample['f0_std']
+            # sample['f0_cwt'] = f0 = model.cwt2f0_norm(cwt_spec, f0_mean, f0_std, mel2ph)
 
         # output == ret
-        # model == src.diff.diffusion.GaussianDiffusion (MIDI-B version)
+        # model == src.diff.diffusion.GaussianDiffusion
         output = model(txt_tokens, mel2ph=mel2ph, spk_embed=spk_embed,
                        ref_mels=target, f0=f0, uv=uv, energy=energy, infer=infer, pitch_midi=sample['pitch_midi'],
                        midi_dur=sample.get('midi_dur'), is_slur=sample.get('is_slur'))

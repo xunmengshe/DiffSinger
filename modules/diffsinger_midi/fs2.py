@@ -75,7 +75,8 @@ class FastSpeech2MIDI(FastSpeech2):
             1. embedding: midi_embedding, midi_dur_embedding, slur_embedding
             2. run self.encoder (a Transformer) using txt_tokens and embeddings
             3. run *dur_predictor* in *add_dur* using *encoder_out*, get *ret['dur']* and *ret['mel2ph']*
-            4. run decoder (skipped for diffusion)
+            4. the same for *pitch_predictor* and *energy_predictor*
+            5. run decoder (skipped for diffusion)
         '''
         midi_embedding, midi_dur_embedding, slur_embedding = Batch2Loss.insert1(
             kwargs['pitch_midi'], kwargs.get('midi_dur', None), kwargs.get('is_slur', None),
@@ -97,34 +98,19 @@ class FastSpeech2MIDI(FastSpeech2):
         )
 
         tgt_nonpadding = (mel2ph > 0).float()[:, :, None]
-        pitch_inp = Batch2Loss.insert3(encoder_out, mel2ph, var_embed, spk_embed_f0, tgt_nonpadding)
-        
-        ############# (src_nonpadding, tgt_nonpadding)
-        nframes = mel2ph.size(1)
-        if hparams['use_pitch_embed']:
-            pitch_inp_ph = (encoder_out + var_embed + spk_embed_f0) * src_nonpadding
-            if f0 is not None:
-                delta_l = nframes - f0.size(1)
-                if delta_l > 0:
-                    f0 = torch.cat((f0,torch.FloatTensor([[x[-1]] * delta_l for x in f0]).to(f0.device)),1)
-                f0 = f0[:,:nframes]
-            if uv is not None:
-                delta_l = nframes - uv.size(1)
-                if delta_l > 0:
-                    uv = torch.cat((uv,torch.FloatTensor([[x[-1]] * delta_l for x in uv]).to(uv.device)),1)
-                uv = uv[:,:nframes]
-            decoder_inp = decoder_inp + self.add_pitch(pitch_inp, f0, uv, mel2ph, ret, encoder_out=pitch_inp_ph)
-            
-        if hparams['use_energy_embed']:
-            if energy is not None:
-                delta_l = nframes - energy.size(1)
-                if delta_l > 0:
-                    energy = torch.cat((energy,torch.FloatTensor([[x[-1]] * delta_l for x in energy]).to(energy.device)),1)
-                energy = energy[:,:nframes]
-            decoder_inp = decoder_inp + self.add_energy(pitch_inp, energy, ret)
+        decoder_inp, pitch_inp, pitch_inp_ph = Batch2Loss.insert3(
+            encoder_out, mel2ph, var_embed, spk_embed_f0, src_nonpadding, tgt_nonpadding
+        )
 
-        ret['decoder_inp'] = decoder_inp = (decoder_inp + spk_embed) * tgt_nonpadding
-        #############
+        pitch_embedding, energy_embedding = Batch2Loss.module3(
+            getattr(self, 'pitch_predictor', None), getattr(self, 'pitch_embed', None),
+            getattr(self, 'energy_predictor', None), getattr(self, 'energy_embed', None),
+            pitch_inp, pitch_inp_ph, f0, uv, energy, mel2ph, (not infer), ret
+        )
+
+        decoder_inp = Batch2Loss.insert4(
+            decoder_inp, pitch_embedding, energy_embedding, spk_embed, ret, tgt_nonpadding
+        )
 
         if skip_decoder:
             return ret
