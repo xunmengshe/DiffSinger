@@ -19,11 +19,14 @@ fs2_ckpt: ''  #
 #num_valid_plots: 0
 task_cls: src.diffsinger_task.DiffSingerMIDITask
 
-K_step: 100
-max_tokens: 40000
-max_updates: 160000
+# for diffusion schedule
+timesteps: 1000
+K_step: 1000
+max_beta: 0.02
+max_tokens: 36000
+max_updates: 320000
 gaussian_start: True
-pndm_speedup: 1
+pndm_speedup: 40
 
 use_pitch_embed: false
 use_gt_f0: false  #  for midi exp
@@ -35,3 +38,5 @@ rel_pos: true
 predictor_layers: 5
 pe_enable: true
 pe_ckpt: 'checkpoints/0102_xiaoma_pe'
+
+

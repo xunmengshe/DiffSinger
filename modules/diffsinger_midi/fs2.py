@@ -35,7 +35,6 @@ class FastspeechMIDIEncoder(FastspeechEncoder):
 
     def forward(self, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding):
         """
-
         :param txt_tokens: [B, T]
         :return: {
             'encoder_out': [T x B x C]
@@ -66,33 +65,6 @@ class FastSpeech2MIDI(FastSpeech2):
         yunmu = ['AP', 'SP'] + ALL_YUNMU 
         yunmu.remove('ng')
         self.vowel_tokens = [dictionary.encode(ph)[0] for ph in yunmu]
-        
-    def add_dur(self, dur_input, mel2ph, txt_tokens, ret, midi_dur = None):
-        src_padding = txt_tokens == 0
-        dur_input = dur_input.detach() + hparams['predictor_grad'] * (dur_input - dur_input.detach())
-        if mel2ph is None:
-            dur, xs = self.dur_predictor.inference(dur_input, src_padding)
-            ret['dur'] = xs
-            dur = xs.squeeze(-1).exp() - 1.0
-            for i in range(len(dur)):
-                for j in range(len(dur[i])):
-                    if txt_tokens[i,j] in self.vowel_tokens:
-                        if j < len(dur[i])-1 and txt_tokens[i,j+1] not in self.vowel_tokens:
-                            dur[i,j] = midi_dur[i,j] - dur[i,j+1]
-                            if dur[i,j] < 0:
-                                dur[i,j] = 0
-                                dur[i,j+1] = midi_dur[i,j]
-                        else:
-                            dur[i,j]=midi_dur[i,j]      
-            dur[:,0] = dur[:,0] + 0.5
-            dur_acc = F.pad(torch.round(torch.cumsum(dur, axis=1)), (1,0))
-            dur = torch.clamp(dur_acc[:,1:]-dur_acc[:,:-1], min=0).long()
-            ret['dur_choice'] = dur
-            mel2ph = self.length_regulator(dur, src_padding).detach()
-        else:
-            ret['dur'] = self.dur_predictor(dur_input, src_padding)
-        ret['mel2ph'] = mel2ph
-        return mel2ph
 
     def forward(self, txt_tokens, mel2ph=None, spk_embed=None,
                 ref_mels=None, f0=None, uv=None, energy=None, skip_decoder=False,
@@ -104,8 +76,6 @@ class FastSpeech2MIDI(FastSpeech2):
             3. run *dur_predictor* in *add_dur* using *encoder_out*, get *ret['dur']* and *ret['mel2ph']*
             4. run decoder (skipped for diffusion)
         '''
-        ret = {}
-
         from opencpop_e2e_pipelines.batch2result import Batch2Result
         midi_embedding, midi_dur_embedding, slur_embedding = Batch2Result.insert1(
             kwargs['pitch_midi'], kwargs.get('midi_dur', None), kwargs.get('is_slur', None),
@@ -115,35 +85,18 @@ class FastSpeech2MIDI(FastSpeech2):
         encoder_out = Batch2Result.module1(self.encoder, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, C]
         
         src_nonpadding = (txt_tokens > 0).float()[:, :, None]
+        var_embed, spk_embed, spk_embed_dur, spk_embed_f0, dur_inp = Batch2Result.insert2(
+            src_nonpadding, spk_embed, spk_embed_dur_id, spk_embed_f0_id, encoder_out,
+            self.spk_embed_proj if hasattr(self, 'spk_embed_proj') else None
+        )
 
-        # add ref style embed
-        # Not implemented
-        # variance encoder
-        var_embed = 0
+        ret = {}
+        mel2ph = Batch2Result.module2(
+            self.dur_predictor, self.length_regulator,
+            dur_inp, mel2ph, txt_tokens, self.vowel_tokens, ret, midi_dur=kwargs['midi_dur']*hparams['audio_sample_rate']/hparams['hop_size']
+        )
 
-        # encoder_out_dur denotes encoder outputs for duration predictor
-        # in speech adaptation, duration predictor use old speaker embedding
-        if hparams['use_spk_embed']:
-            spk_embed_dur = spk_embed_f0 = spk_embed = self.spk_embed_proj(spk_embed)[:, None, :]
-        elif hparams['use_spk_id']:
-            spk_embed_id = spk_embed
-            if spk_embed_dur_id is None:
-                spk_embed_dur_id = spk_embed_id
-            if spk_embed_f0_id is None:
-                spk_embed_f0_id = spk_embed_id
-            spk_embed = self.spk_embed_proj(spk_embed_id)[:, None, :]
-            spk_embed_dur = spk_embed_f0 = spk_embed
-            if hparams['use_split_spk_id']:
-                spk_embed_dur = self.spk_embed_dur(spk_embed_dur_id)[:, None, :]
-                spk_embed_f0 = self.spk_embed_f0(spk_embed_f0_id)[:, None, :]
-        else:
-            spk_embed_dur = spk_embed_f0 = spk_embed = 0
-
-        # add dur
-        dur_inp = (encoder_out + var_embed + spk_embed_dur) * src_nonpadding
-
-        mel2ph = self.add_dur(dur_inp, mel2ph, txt_tokens, ret, midi_dur=kwargs['midi_dur']*hparams['audio_sample_rate']/hparams['hop_size'])
-
+        #############
         decoder_inp = F.pad(encoder_out, [0, 0, 1, 0])
 
         mel2ph_ = mel2ph[..., None].repeat([1, 1, encoder_out.shape[-1]])
@@ -153,10 +106,29 @@ class FastSpeech2MIDI(FastSpeech2):
 
         # add pitch and energy embed
         pitch_inp = (decoder_inp_origin + var_embed + spk_embed_f0) * tgt_nonpadding
+        #############
+        
+        ############# (src_nonpadding, tgt_nonpadding)
         if hparams['use_pitch_embed']:
             pitch_inp_ph = (encoder_out + var_embed + spk_embed_f0) * src_nonpadding
+            if f0 is not None:
+                delta_l = nframes - f0.size(1)
+                if delta_l > 0:
+                    f0 = torch.cat((f0,torch.FloatTensor([[x[-1]] * delta_l for x in f0]).to(f0.device)),1)
+                f0 = f0[:,:nframes]
+            if uv is not None:
+                delta_l = nframes - uv.size(1)
+                if delta_l > 0:
+                    uv = torch.cat((uv,torch.FloatTensor([[x[-1]] * delta_l for x in uv]).to(uv.device)),1)
+                uv = uv[:,:nframes]
             decoder_inp = decoder_inp + self.add_pitch(pitch_inp, f0, uv, mel2ph, ret, encoder_out=pitch_inp_ph)
+            
         if hparams['use_energy_embed']:
+            if energy is not None:
+                delta_l = nframes - energy.size(1)
+                if delta_l > 0:
+                    energy = torch.cat((energy,torch.FloatTensor([[x[-1]] * delta_l for x in energy]).to(energy.device)),1)
+                energy = energy[:,:nframes]
             decoder_inp = decoder_inp + self.add_energy(pitch_inp, energy, ret)
 
         ret['decoder_inp'] = decoder_inp = (decoder_inp + spk_embed) * tgt_nonpadding

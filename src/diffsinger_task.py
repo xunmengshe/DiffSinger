@@ -291,6 +291,8 @@ class DiffSingerMIDITask(DiffSingerTask):
             f0_std = sample['f0_std']
             sample['f0_cwt'] = f0 = model.cwt2f0_norm(cwt_spec, f0_mean, f0_std, mel2ph)
 
+        # output == ret
+        # model == src.diff.diffusion.GaussianDiffusion (MIDI-B version)
         output = model(txt_tokens, mel2ph=mel2ph, spk_embed=spk_embed,
                        ref_mels=target, f0=f0, uv=uv, energy=energy, infer=infer, pitch_midi=sample['pitch_midi'],
                        midi_dur=sample.get('midi_dur'), is_slur=sample.get('is_slur'))
