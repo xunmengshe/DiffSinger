@@ -1,14 +1,10 @@
-'''
-    batch -> insert1 -> module1 -> insert2 -> module2 -> insert3 -> module3 -> insert4 -> module4 -> result
-'''
-from pipelines import batch2result
 from utils.hparams import hparams
 import torch
 from torch.nn import functional as F
 
-class Batch2Result(batch2result.Batch2Result):
+class Batch2Loss:
     '''
-        batch -> insert1 -> module1 -> insert2 -> module2 -> insert3 -> module3 -> insert4 -> module4 -> result
+        pipeline: batch -> insert1 -> module1 -> insert2 -> module2 -> insert3 -> module3 -> insert4 -> module4 -> loss
     '''
 
     @staticmethod

@@ -1,24 +1,3 @@
-'''
-    Base class for data processing.
-    1. *process* and *process_data_split*:
-        process entire data, generate the train-test split (support parallel processing);
-    2. *process_item*:
-        process singe piece of data;
-    3. *get_pitch*:
-        infer the pitch using some algorithm;
-    4. *get_align*:
-        get the alignment using 'mel2ph' format (see https://arxiv.org/abs/1905.09263).
-    5. phoneme encoder, voice encoder, etc.
-
-    Subclasses should define:
-    1. *load_metadata*:
-        how to read multiple datasets from files;
-    2. *train_item_names*, *valid_item_names*, *test_item_names*:
-        how to split the dataset;
-    3. load_ph_set:
-        the phoneme set.
-'''
-
 from ast import Not
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -40,6 +19,26 @@ class BinarizationError(Exception):
 BASE_ITEM_ATTRIBUTES = ['txt', 'ph', 'wav_fn', 'tg_fn', 'spk_id']
 
 class BaseBinarizer:
+    '''
+        Base class for data processing.
+        1. *process* and *process_data_split*:
+            process entire data, generate the train-test split (support parallel processing);
+        2. *process_item*:
+            process singe piece of data;
+        3. *get_pitch*:
+            infer the pitch using some algorithm;
+        4. *get_align*:
+            get the alignment using 'mel2ph' format (see https://arxiv.org/abs/1905.09263).
+        5. phoneme encoder, voice encoder, etc.
+
+        Subclasses should define:
+        1. *load_metadata*:
+            how to read multiple datasets from files;
+        2. *train_item_names*, *valid_item_names*, *test_item_names*:
+            how to split the dataset;
+        3. load_ph_set:
+            the phoneme set.
+    '''
     def __init__(self, processed_data_dir=None, item_attributes=BASE_ITEM_ATTRIBUTES):
         if processed_data_dir is None:
             processed_data_dir = hparams['processed_data_dir']

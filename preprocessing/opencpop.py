@@ -1,7 +1,6 @@
 '''
     file -> temporary_dict -> processed_input -> batch
 '''
-from pipelines import file2batch
 from utils.hparams import hparams
 from src.vocoders.base_vocoder import VOCODERS
 import numpy as np
@@ -14,9 +13,9 @@ from basics.base_binarizer import BinarizationError
 import torch
 import utils
 
-class File2Batch(file2batch.File2Batch):
+class File2Batch:
     '''
-        file -> temporary_dict -> processed_input -> batch
+        pipeline: file -> temporary_dict -> processed_input -> batch
     '''
 
     @staticmethod
@@ -82,7 +81,7 @@ class File2Batch(file2batch.File2Batch):
             'item_name': item_name, 'mel': mel, 'wav': wav,
             'sec': len(wav) / hparams['audio_sample_rate'], 'len': mel.shape[0]
         }
-        processed_input = {**processed_input, **temp_dict} # merge two dicts
+        processed_input = {**temp_dict, **processed_input} # merge two dicts
         try:
             if binarization_args['with_f0']:
                 get_pitch(wav, mel)

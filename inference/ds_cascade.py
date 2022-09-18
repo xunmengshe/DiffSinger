@@ -4,7 +4,7 @@ import torch
 from basics.base_svs_infer import BaseSVSInfer
 from utils import load_ckpt
 from utils.hparams import hparams
-from diff.diffusion import GaussianDiffusion
+from src.diff.diffusion import GaussianDiffusion
 from src.diffsinger_task import DIFF_DECODERS
 from modules.fastspeech.pe import PitchExtractor
 import utils
@@ -27,6 +27,9 @@ class DiffSingerCascadeInfer(BaseSVSInfer):
         load_ckpt(model, hparams['work_dir'], 'model')
         return model
         
+    def preprocess_word_level_input(self, inp):
+        return super().preprocess_word_level_input(inp)
+
     def preprocess_phoneme_level_input(self, inp):
         ph_seq = inp['ph_seq']
         note_lst = inp['note_seq'].split()

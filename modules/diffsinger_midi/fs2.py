@@ -10,6 +10,7 @@ from utils.text_encoder import TokenTextEncoder
 from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
 from torch.nn import functional as F
 import torch
+from training.diffsinger import Batch2Loss
 
 
 class FastspeechMIDIEncoder(FastspeechEncoder):
@@ -76,22 +77,21 @@ class FastSpeech2MIDI(FastSpeech2):
             3. run *dur_predictor* in *add_dur* using *encoder_out*, get *ret['dur']* and *ret['mel2ph']*
             4. run decoder (skipped for diffusion)
         '''
-        from opencpop_e2e_pipelines.batch2result import Batch2Result
-        midi_embedding, midi_dur_embedding, slur_embedding = Batch2Result.insert1(
+        midi_embedding, midi_dur_embedding, slur_embedding = Batch2Loss.insert1(
             kwargs['pitch_midi'], kwargs.get('midi_dur', None), kwargs.get('is_slur', None),
             self.midi_embed, self.midi_dur_layer, self.is_slur_embed
         )
 
-        encoder_out = Batch2Result.module1(self.encoder, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, C]
+        encoder_out = Batch2Loss.module1(self.encoder, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, C]
         
         src_nonpadding = (txt_tokens > 0).float()[:, :, None]
-        var_embed, spk_embed, spk_embed_dur, spk_embed_f0, dur_inp = Batch2Result.insert2(
+        var_embed, spk_embed, spk_embed_dur, spk_embed_f0, dur_inp = Batch2Loss.insert2(
             src_nonpadding, spk_embed, spk_embed_dur_id, spk_embed_f0_id, encoder_out,
             self.spk_embed_proj if hasattr(self, 'spk_embed_proj') else None
         )
 
         ret = {}
-        mel2ph = Batch2Result.module2(
+        mel2ph = Batch2Loss.module2(
             self.dur_predictor, self.length_regulator,
             dur_inp, mel2ph, txt_tokens, self.vowel_tokens, ret, midi_dur=kwargs['midi_dur']*hparams['audio_sample_rate']/hparams['hop_size']
         )
@@ -109,6 +109,7 @@ class FastSpeech2MIDI(FastSpeech2):
         #############
         
         ############# (src_nonpadding, tgt_nonpadding)
+        nframes = mel2ph.size(1)
         if hparams['use_pitch_embed']:
             pitch_inp_ph = (encoder_out + var_embed + spk_embed_f0) * src_nonpadding
             if f0 is not None:
@@ -132,6 +133,7 @@ class FastSpeech2MIDI(FastSpeech2):
             decoder_inp = decoder_inp + self.add_energy(pitch_inp, energy, ret)
 
         ret['decoder_inp'] = decoder_inp = (decoder_inp + spk_embed) * tgt_nonpadding
+        #############
 
         if skip_decoder:
             return ret

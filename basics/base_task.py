@@ -1,25 +1,3 @@
-'''
-    Base class for training tasks.
-    1. *load_ckpt*:
-        load checkpoint;
-    2. *training_step*:
-        record and log the loss;
-    3. *optimizer_step*:
-        run backwards step;
-    4. *start*:
-        load training configs, backup code, log to tensorboard, start training;
-    5. *configure_ddp* and *init_ddp_connection*:
-        start parallel training.
-
-    Subclasses should define:
-    1. *build_model*, *build_optimizer*, *build_scheduler*:
-        how to build the model, the optimizer and the training scheduler;
-    2. *_training_step*:
-        one training step of the model;
-    3. *validation_end* and *_validation_end*:
-        postprocess the validation output.
-'''
-
 from datetime import datetime
 import shutil
 
@@ -47,6 +25,27 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format=log_format, datefmt='%m/%d %I:%M:%S %p')
 
 class BaseTask(nn.Module):
+    '''
+        Base class for training tasks.
+        1. *load_ckpt*:
+            load checkpoint;
+        2. *training_step*:
+            record and log the loss;
+        3. *optimizer_step*:
+            run backwards step;
+        4. *start*:
+            load training configs, backup code, log to tensorboard, start training;
+        5. *configure_ddp* and *init_ddp_connection*:
+            start parallel training.
+
+        Subclasses should define:
+        1. *build_model*, *build_optimizer*, *build_scheduler*:
+            how to build the model, the optimizer and the training scheduler;
+        2. *_training_step*:
+            one training step of the model;
+        3. *validation_end* and *_validation_end*:
+            postprocess the validation output.
+    '''
     def __init__(self, *args, **kwargs):
         # dataset configs
         super(BaseTask, self).__init__(*args, **kwargs)

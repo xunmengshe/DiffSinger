@@ -1,26 +1,25 @@
-'''
-    Base class for datasets.
-    1. *ordered_indices*:
-        if self.shuffle == True, shuffle the indices;
-        if self.sort_by_len == True, sort data by length;
-    2. *sizes*:
-        clipped length if "max_frames" is set;
-    3. *num_tokens*:
-        unclipped length.
-
-    Subclasses should define:
-    1. *collate*:
-        take the longest data, pad other data to the same length;
-    2. *__getitem__*:
-        the index function.
-'''
-
 import torch
 from utils.hparams import hparams
 import numpy as np
 import os
 
 class BaseDataset(torch.utils.data.Dataset):
+    '''
+        Base class for datasets.
+        1. *ordered_indices*:
+            if self.shuffle == True, shuffle the indices;
+            if self.sort_by_len == True, sort data by length;
+        2. *sizes*:
+            clipped length if "max_frames" is set;
+        3. *num_tokens*:
+            unclipped length.
+
+        Subclasses should define:
+        1. *collate*:
+            take the longest data, pad other data to the same length;
+        2. *__getitem__*:
+            the index function.
+    '''
     def __init__(self, shuffle):
         super().__init__()
         self.hparams = hparams

@@ -1,20 +1,3 @@
-'''
-    Base class for SVS inference models.
-    1. *example_run* and *infer_once*:
-        the overall pipeline;
-    2. *build_vocoder* and *run_vocoder*:
-        a HifiGAN vocoder.
-
-    Subclasses should define:
-    1. *build_model*:
-        how to build the model;
-    2. *forward_model*:
-        how to run the model (typically, generate a mel-spectrogram and
-        pass it to the pre-built vocoder);
-    3. *preprocess_input*:
-        how to preprocess user input.
-'''
-
 # coding=utf8
 import os
 
@@ -22,6 +5,7 @@ import torch
 import numpy as np
 from modules.hifigan.hifigan import HifiGanGenerator
 from src.vocoders.hifigan import HifiGAN
+from inference.opencpop.map import cpop_pinyin2ph_func
 
 from utils import load_ckpt
 from utils.hparams import set_hparams, hparams
@@ -29,9 +13,28 @@ import librosa
 import glob
 import re
 from utils.text_encoder import TokenTextEncoder
+from pypinyin import pinyin, lazy_pinyin, Style
 
 
 class BaseSVSInfer:
+    '''
+        Base class for SVS inference models.
+        1. *example_run* and *infer_once*:
+            the overall pipeline;
+        2. *build_vocoder* and *run_vocoder*:
+            a HifiGAN vocoder;
+        3. *preprocess_word_level_input*:
+            convert words to phonemes, add slurs.
+
+        Subclasses should define:
+        1. *build_model*:
+            how to build the model;
+        2. *forward_model*:
+            how to run the model (typically, generate a mel-spectrogram and
+            pass it to the pre-built vocoder);
+        3. *preprocess_input*:
+            how to preprocess user input.
+    '''
     def __init__(self, hparams, device=None):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -43,6 +46,8 @@ class BaseSVSInfer:
                 "ong", "ou", "p", "q", "r", "s", "sh", "t", "u", "ua", "uai", "uan", "uang", "ui", "un", "uo", "v",
                 "van", "ve", "vn", "w", "x", "y", "z", "zh"]
         self.ph_encoder = TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
+        self.pinyin2phs = cpop_pinyin2ph_func()
+        self.spk_map = {'opencpop': 0}
 
         self.model = self.build_model()
         self.model.eval()
@@ -86,6 +91,75 @@ class BaseSVSInfer:
             y = self.vocoder(c).view(-1)
             # [T]
         return y[None]
+
+    def preprocess_word_level_input(self, inp):
+        # Pypinyin can't solve polyphonic words
+        text_raw = inp['text'].replace('最长', '最常').replace('长睫毛', '常睫毛') \
+            .replace('那么长', '那么常').replace('多长', '多常') \
+            .replace('很长', '很常')  # We hope someone could provide a better g2p module for us by opening pull requests.
+
+        # lyric
+        pinyins = lazy_pinyin(text_raw, strict=False)
+        ph_per_word_lst = [self.pinyin2phs[pinyin.strip()] for pinyin in pinyins if pinyin.strip() in self.pinyin2phs]
+
+        # Note
+        note_per_word_lst = [x.strip() for x in inp['notes'].split('|') if x.strip() != '']
+        mididur_per_word_lst = [x.strip() for x in inp['notes_duration'].split('|') if x.strip() != '']
+
+        if len(note_per_word_lst) == len(ph_per_word_lst) == len(mididur_per_word_lst):
+            print('Pass word-notes check.')
+        else:
+            print('The number of words does\'t match the number of notes\' windows. ',
+                  'You should split the note(s) for each word by | mark.')
+            print(ph_per_word_lst, note_per_word_lst, mididur_per_word_lst)
+            print(len(ph_per_word_lst), len(note_per_word_lst), len(mididur_per_word_lst))
+            return None
+
+        note_lst = []
+        ph_lst = []
+        midi_dur_lst = []
+        is_slur = []
+        for idx, ph_per_word in enumerate(ph_per_word_lst):
+            # for phs in one word:
+            # single ph like ['ai']  or multiple phs like ['n', 'i']
+            ph_in_this_word = ph_per_word.split()
+
+            # for notes in one word:
+            # single note like ['D4'] or multiple notes like ['D4', 'E4'] which means a 'slur' here.
+            note_in_this_word = note_per_word_lst[idx].split()
+            midi_dur_in_this_word = mididur_per_word_lst[idx].split()
+            # process for the model input
+            # Step 1.
+            #  Deal with note of 'not slur' case or the first note of 'slur' case
+            #  j        ie
+            #  F#4/Gb4  F#4/Gb4
+            #  0        0
+            for ph in ph_in_this_word:
+                ph_lst.append(ph)
+                note_lst.append(note_in_this_word[0])
+                midi_dur_lst.append(midi_dur_in_this_word[0])
+                is_slur.append(0)
+            # step 2.
+            #  Deal with the 2nd, 3rd... notes of 'slur' case
+            #  j        ie         ie
+            #  F#4/Gb4  F#4/Gb4    C#4/Db4
+            #  0        0          1
+            if len(note_in_this_word) > 1:  # is_slur = True, we should repeat the YUNMU to match the 2nd, 3rd... notes.
+                for idx in range(1, len(note_in_this_word)):
+                    ph_lst.append(ph_in_this_word[-1])
+                    note_lst.append(note_in_this_word[idx])
+                    midi_dur_lst.append(midi_dur_in_this_word[idx])
+                    is_slur.append(1)
+        ph_seq = ' '.join(ph_lst)
+
+        if len(ph_lst) == len(note_lst) == len(midi_dur_lst):
+            print(len(ph_lst), len(note_lst), len(midi_dur_lst))
+            print('Pass word-notes check.')
+        else:
+            print('The number of words does\'t match the number of notes\' windows. ',
+                  'You should split the note(s) for each word by | mark.')
+            return None
+        return ph_seq, note_lst, midi_dur_lst, is_slur
 
     def preprocess_input(self):
         raise NotImplementedError
