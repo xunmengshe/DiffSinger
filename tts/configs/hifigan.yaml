@@ -12,7 +12,7 @@ resblock_dilation_sizes: [ [ 1,3,5 ], [ 1,3,5 ], [ 1,3,5 ] ]
 lambda_mel: 45.0
 
 max_samples: 8192
-batch_size: 16
+max_sentences: 16
 
 generator_params:
   lr: 0.0002            # Generator's learning rate.

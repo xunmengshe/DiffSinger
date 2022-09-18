@@ -19,6 +19,6 @@ max_updates: 400000
 use_gt_dur: true
 use_gt_f0: true
 gen_tgt_spk_id: -1
-batch_size: 48
+max_sentences: 48
 num_sanity_val_steps: 1
 num_valid_plots: 1

@@ -52,5 +52,5 @@ class OpencpopBinarizer(MidiSingingBinarizer):
         return train_item_names, test_item_names
 
     def load_meta_data(self, processed_data_dir, ds_id):
-        from opencpop_e2e_pipelines.file2batch import File2Batch
+        from preprocessing.opencpop import File2Batch
         self.items = File2Batch.file2temporary_dict()

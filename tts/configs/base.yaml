@@ -79,7 +79,7 @@ clip_grad_norm: 1
 # train and eval
 ###########
 max_tokens: 30000
-batch_size: 100000
+max_sentences: 100000
 max_eval_sentences: 1
 max_eval_tokens: 60000
 train_set_name: 'train'

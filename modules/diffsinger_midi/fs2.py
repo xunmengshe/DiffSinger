@@ -67,7 +67,7 @@ class FastSpeech2MIDI(FastSpeech2):
         yunmu.remove('ng')
         self.vowel_tokens = [dictionary.encode(ph)[0] for ph in yunmu]
 
-    def forward(self, txt_tokens, mel2ph=None, spk_embed=None,
+    def forward(self, txt_tokens, mel2ph=None, spk_embed_id=None,
                 ref_mels=None, f0=None, uv=None, energy=None, skip_decoder=False,
                 spk_embed_dur_id=None, spk_embed_f0_id=None, infer=False, **kwargs):
         '''
@@ -86,7 +86,7 @@ class FastSpeech2MIDI(FastSpeech2):
         
         src_nonpadding = (txt_tokens > 0).float()[:, :, None]
         var_embed, spk_embed, spk_embed_dur, spk_embed_f0, dur_inp = Batch2Loss.insert2(
-            src_nonpadding, spk_embed, spk_embed_dur_id, spk_embed_f0_id, encoder_out,
+            encoder_out, spk_embed_id, spk_embed_dur_id, spk_embed_f0_id, src_nonpadding,
             self.spk_embed_proj if hasattr(self, 'spk_embed_proj') else None
         )
 
@@ -96,17 +96,8 @@ class FastSpeech2MIDI(FastSpeech2):
             dur_inp, mel2ph, txt_tokens, self.vowel_tokens, ret, midi_dur=kwargs['midi_dur']*hparams['audio_sample_rate']/hparams['hop_size']
         )
 
-        #############
-        decoder_inp = F.pad(encoder_out, [0, 0, 1, 0])
-
-        mel2ph_ = mel2ph[..., None].repeat([1, 1, encoder_out.shape[-1]])
-        decoder_inp_origin = decoder_inp = torch.gather(decoder_inp, 1, mel2ph_)  # [B, T, H]
-
         tgt_nonpadding = (mel2ph > 0).float()[:, :, None]
-
-        # add pitch and energy embed
-        pitch_inp = (decoder_inp_origin + var_embed + spk_embed_f0) * tgt_nonpadding
-        #############
+        pitch_inp = Batch2Loss.insert3(encoder_out, mel2ph, var_embed, spk_embed_f0, tgt_nonpadding)
         
         ############# (src_nonpadding, tgt_nonpadding)
         nframes = mel2ph.size(1)

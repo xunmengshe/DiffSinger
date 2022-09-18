@@ -14,8 +14,11 @@ class MidiSingingBinarizer(SingingBinarizer):
         super().__init__(processed_data_dir, item_attributes)
 
     def load_meta_data(self, processed_data_dir, ds_id):
-        # NOTE: this function is *isolated* from other scripts, which means
-        # it may not be compatible with the current version.
+        '''
+            NOTE: this function is *isolated* from other scripts, which means
+                  it may not be compatible with the current version.
+        '''
+        return
         meta_midi = json.load(open(os.path.join(processed_data_dir, 'meta.json'), encoding='utf-8'))   # [list of dict]
 
         for song_item in meta_midi:

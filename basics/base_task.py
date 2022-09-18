@@ -60,7 +60,7 @@ class BaseTask(nn.Module):
         self.example_input_array = None
 
         self.max_tokens = hparams['max_tokens']
-        self.max_sentences = hparams['batch_size']
+        self.max_sentences = hparams['max_sentences']
         self.max_eval_tokens = hparams['max_eval_tokens']
         if self.max_eval_tokens == -1:
             hparams['max_eval_tokens'] = self.max_eval_tokens = self.max_tokens
@@ -219,7 +219,7 @@ class BaseTask(nn.Module):
                               accumulate_grad_batches=hparams['accumulate_grad_batches'])
         if not hparams['infer']:  # train
             # copy_code = input(f'{hparams["save_codes"]} code backup? y/n: ') == 'y'
-            copy_code = False # do not copy code
+            copy_code = True # backup code every time
             if copy_code:
                 t = datetime.now().strftime('%Y%m%d%H%M%S')
                 code_dir = f'{work_dir}/codes/{t}'

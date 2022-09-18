@@ -191,15 +191,18 @@ class BaseBinarizer:
         print(f"| {prefix} total duration: {total_sec:.3f}s")
 
     def process_item(self, item_name, meta_data, binarization_args):
-        from opencpop_e2e_pipelines.file2batch import File2Batch
+        from preprocessing.opencpop import File2Batch
         return File2Batch.temporary_dict2processed_input(item_name, meta_data, self.phone_encoder, binarization_args)
 
     def get_align(self, meta_data, mel, phone_encoded, res):
         raise NotImplementedError
 
     def get_align_from_textgrid(self, meta_data, mel, phone_encoded, res):
-        # NOTE: this part of script is *isolated* from other scripts, which means
-        #       it may not be compatible with the current version.
+        '''
+            NOTE: this part of script is *isolated* from other scripts, which means
+                  it may not be compatible with the current version.
+        '''
+        return
         tg_fn, ph = meta_data['tg_fn'], meta_data['ph']
         if tg_fn is not None and os.path.exists(tg_fn):
             mel2ph, dur = get_mel2ph(tg_fn, ph, mel, hparams)
@@ -212,8 +215,11 @@ class BaseBinarizer:
         res['dur'] = dur
 
     def get_f0cwt(self, f0, res):
-        # NOTE: this part of script is *isolated* from other scripts, which means
-        #       it may not be compatible with the current version.
+        '''
+            NOTE: this part of script is *isolated* from other scripts, which means
+                  it may not be compatible with the current version.
+        '''
+        return
         from utils.cwt import get_cont_lf0, get_lf0_cwt
         uv, cont_lf0_lpf = get_cont_lf0(f0)
         logf0s_mean_org, logf0s_std_org = np.mean(cont_lf0_lpf), np.std(cont_lf0_lpf)

@@ -4,7 +4,7 @@ from torch.nn import functional as F
 
 class Batch2Loss:
     '''
-        pipeline: batch -> insert1 -> module1 -> insert2 -> module2 -> insert3 -> module3 -> insert4 -> module4 -> loss
+        pipeline: batch -> insert1 -> module1 -> insert2 -> module2 -> insert3 -> module3 -> insert4 -> module4 -> post -> loss
     '''
 
     @staticmethod
@@ -25,16 +25,17 @@ class Batch2Loss:
     def module1(fs2_encoder, # modules
                 txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding): # variables
         '''
-            fastspeech2 encoder
+            get *encoder_out* == fs2_encoder(*txt_tokens*, some embeddings)
         '''
-        return fs2_encoder(txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)
-    
+        encoder_out = fs2_encoder(txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)
+        return encoder_out
+
     @staticmethod
-    def insert2(src_nonpadding, spk_embed, spk_embed_dur_id, spk_embed_f0_id, encoder_out, # variables
+    def insert2(encoder_out, spk_embed_id, spk_embed_dur_id, spk_embed_f0_id, src_nonpadding, # variables
                 spk_embed_proj): # modules
         '''
-            1. calc embeddings for spk, spk_dur, spk_f0
-            2. add *spk_embed_dur* to *dur_inp*
+            1. add embeddings for spk, spk_dur, spk_f0
+            2. get *dur_inp* ~= *encoder_out* + *spk_embed_dur*
         '''
         # add ref style embed
         # Not implemented
@@ -44,9 +45,8 @@ class Batch2Loss:
         # encoder_out_dur denotes encoder outputs for duration predictor
         # in speech adaptation, duration predictor use old speaker embedding
         if hparams['use_spk_embed']:
-            spk_embed_dur = spk_embed_f0 = spk_embed = spk_embed_proj(spk_embed)[:, None, :]
+            spk_embed_dur = spk_embed_f0 = spk_embed = spk_embed_proj(spk_embed_id)[:, None, :]
         elif hparams['use_spk_id']:
-            spk_embed_id = spk_embed
             if spk_embed_dur_id is None:
                 spk_embed_dur_id = spk_embed_id
             if spk_embed_f0_id is None:
@@ -60,14 +60,15 @@ class Batch2Loss:
             spk_embed_dur = spk_embed_f0 = spk_embed = 0
 
         # add dur
-        dur_inp = (encoder_out + var_embed + spk_embed_dur) * src_nonpadding
+        dur_inp = (encoder_out + var_embed + spk_embed_dur) * src_nonpadding # src_nonpadding = (txt_tokens > 0).float()[:, :, None]
         return var_embed, spk_embed, spk_embed_dur, spk_embed_f0, dur_inp
 
     @staticmethod
     def module2(dur_predictor, length_regulator, # modules
                 dur_input, mel2ph, txt_tokens, all_vowel_tokens, ret, midi_dur = None): # variables
         '''
-            get *dur* using dur_predictor
+            1. get *dur* ~= dur_predictor(*dur_inp*)
+            2. (mel2ph is None): get *mel2ph* ~= length_regulater(*dur*)
         ''' 
         src_padding = (txt_tokens == 0)
         dur_input = dur_input.detach() + hparams['predictor_grad'] * (dur_input - dur_input.detach())
@@ -98,11 +99,18 @@ class Batch2Loss:
         return mel2ph
     
     @staticmethod
-    def insert3():
+    def insert3(encoder_out, mel2ph, var_embed, spk_embed_f0, tgt_nonpadding): # variables
         '''
-            add *spk_embed_f0* to *pitch_inp*
+            1. get *decoder_inp* ~= convert_ph_to_mel(*encoder_out*, *mel2ph*)
+            2. get *pitch_inp* ~= *decoder_inp* + *spk_embed_f0*
         '''
-        raise NotImplementedError
+        decoder_inp = F.pad(encoder_out, [0, 0, 1, 0])
+        mel2ph_ = mel2ph[..., None].repeat([1, 1, encoder_out.shape[-1]])
+        decoder_inp = torch.gather(decoder_inp, 1, mel2ph_)  # [B, T, H]
+
+        # add pitch and energy embed
+        pitch_inp = (decoder_inp + var_embed + spk_embed_f0) * tgt_nonpadding # tgt_nonpadding = (mel2ph > 0).float()[:, :, None]
+        return pitch_inp
 
     @staticmethod
     def module3(pitch_predictor, energy_predictor, # modules
@@ -125,12 +133,25 @@ class Batch2Loss:
 
     @staticmethod
     def module4(diff_main_loss, # modules
-                norm_spec, decoder_inp_transposed, ret, K_step, batch_size, device): # variables
+                norm_spec, decoder_inp_t, ret, K_step, batch_size, device): # variables
         '''
-            diffusion using normalized spec as input and transposed decoder_inp as condition
+            calc diffusion main loss, using spec as input and decoder_inp as condition.
+            
+            Args:
+                norm_spec: (normalized) spec
+                decoder_inp_t: (transposed) decoder_inp
+            Returns:
+                ret['diff_loss']
         '''
         t = torch.randint(0, K_step, (batch_size,), device=device).long()
         norm_spec = norm_spec.transpose(1, 2)[:, None, :, :]  # [B, 1, M, T]
-        ret['diff_loss'] = diff_main_loss(norm_spec, t, cond=decoder_inp_transposed)
+        ret['diff_loss'] = diff_main_loss(norm_spec, t, cond=decoder_inp_t)
         # nonpadding = (mel2ph != 0).float()
         # ret['diff_loss'] = self.p_losses(x, t, cond, nonpadding=nonpadding)
+    
+    @staticmethod
+    def post():
+        '''
+            calculate other losses: dur loss, pitch loss, energy loss
+        '''
+        pass

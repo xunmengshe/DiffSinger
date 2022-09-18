@@ -14,6 +14,7 @@ from einops import rearrange
 from modules.fastspeech.fs2 import FastSpeech2
 from modules.diffsinger_midi.fs2 import FastSpeech2MIDI
 from utils.hparams import hparams
+from training.diffsinger import Batch2Loss
 
 
 def exists(x):
@@ -238,8 +239,7 @@ class GaussianDiffusion(nn.Module):
         b, *_, device = *txt_tokens.shape, txt_tokens.device
 
         if not infer:
-            from opencpop_e2e_pipelines.batch2result import Batch2Result
-            Batch2Result.module4(
+            Batch2Loss.module4(
                 self.p_losses,
                 self.norm_spec(ref_mels), cond, ret, self.K_step, b, device
             )

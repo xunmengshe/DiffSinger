@@ -262,7 +262,7 @@ class OpencpopDataset(FastSpeechDataset):
         return sample
 
     def collater(self, samples):
-        from opencpop_e2e_pipelines.file2batch import File2Batch
+        from preprocessing.opencpop import File2Batch
         return File2Batch.processed_input2batch(samples)
 
 
