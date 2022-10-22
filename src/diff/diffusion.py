@@ -261,12 +261,51 @@ class GaussianDiffusion(nn.Module):
             shape = (cond.shape[0], 1, self.mel_bins, cond.shape[2])
             x = torch.randn(shape, device=device)
             if hparams.get('pndm_speedup') and hparams['pndm_speedup'] > 1:
-                self.noise_list = deque(maxlen=4)
-                iteration_interval = hparams['pndm_speedup']
-                for i in tqdm(reversed(range(0, t, iteration_interval)), desc='sample time step',
-                              total=t // iteration_interval):
-                    x = self.p_sample_plms(x, torch.full((b,), i, device=device, dtype=torch.long), iteration_interval,
-                                           cond)
+                # obsolete: pndm_speedup, now use dpm_solver.
+                # self.noise_list = deque(maxlen=4)
+                # iteration_interval = hparams['pndm_speedup']
+                # for i in tqdm(reversed(range(0, t, iteration_interval)), desc='sample time step',
+                #               total=t // iteration_interval):
+                #     x = self.p_sample_plms(x, torch.full((b,), i, device=device, dtype=torch.long), iteration_interval,
+                #                            cond)
+                
+                from inference.dpm_solver_pytorch import NoiseScheduleVP, model_wrapper, DPM_Solver
+                ## 1. Define the noise schedule.
+                ## We support the 'linear' or 'cosine' VP schedule.
+                noise_schedule = NoiseScheduleVP(schedule='linear')
+
+                ## 2. Convert your discrete-time noise prediction model `model`
+                ## to the continuous-time noise prediction model.
+                def my_wrapper(fn):
+                    def wrapped(x, t, **kwargs):
+                        t = t.long()
+                        ret = fn(x, t, **kwargs)
+                        self.bar.update(1)
+                        return ret
+                    return wrapped
+                
+                model_fn = model_wrapper(
+                    my_wrapper(self.denoise_fn),
+                    noise_schedule,
+                    is_cond_classifier=False,
+                    total_N=1000,
+                    model_kwargs={"cond": cond}
+                )
+
+                ## 3. Define dpm-solver and sample by dpm-solver-fast (recommended).
+                ## You can adjust the `steps` to balance the computation
+                ## costs and the sample quality.
+                dpm_solver = DPM_Solver(model_fn, noise_schedule)
+
+                steps = t // hparams["pndm_speedup"]
+                self.bar = tqdm(desc="sample time step", total=steps)
+                x = dpm_solver.sample(
+                    x,
+                    steps=steps,
+                    eps=1e-4,
+                    adaptive_step_size=False,
+                    fast_version=True,
+                )
             else:
                 for i in tqdm(reversed(range(0, t)), desc='sample time step', total=t):
                     x = self.p_sample(x, torch.full((b,), i, device=device, dtype=torch.long), cond)
