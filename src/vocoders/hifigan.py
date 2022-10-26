@@ -58,8 +58,46 @@ class HifiGAN(PWG):
             ckpt = f'{base_dir}/generator_v1'
             if os.path.exists(config_path):
                 self.model, self.config, self.device = load_model(config_path=config_path, file_path=file_path)
-
+    
+    def spec2wav_torch(self, mel, **kwargs):
+        if self.config['audio_sample_rate'] != hparams['audio_sample_rate']:
+            print('Mismatch parameters: hparams[\'audio_sample_rate\']=',hparams['audio_sample_rate'],'!=',self.config['audio_sample_rate'],'(vocoder)')
+        if self.config['audio_num_mel_bins'] != hparams['audio_num_mel_bins']:
+            print('Mismatch parameters: hparams[\'audio_num_mel_bins\']=',hparams['audio_num_mel_bins'],'!=',self.config['audio_num_mel_bins'],'(vocoder)')
+        if self.config['fft_size'] != hparams['fft_size']:
+            print('Mismatch parameters: hparams[\'fft_size\']=',hparams['fft_size'],'!=',self.config['fft_size'],'(vocoder)')
+        if self.config['win_size'] != hparams['win_size']:
+            print('Mismatch parameters: hparams[\'win_size\']=',hparams['win_size'],'!=',self.config['win_size'],'(vocoder)')
+        if self.config['hop_size'] != hparams['hop_size']:
+            print('Mismatch parameters: hparams[\'hop_size\']=',hparams['hop_size'],'!=',self.config['hop_size'],'(vocoder)')
+        if self.config['fmin'] != hparams['fmin']:
+            print('Mismatch parameters: hparams[\'fmin\']=',hparams['fmin'],'!=',self.config['fmin'] ,'(vocoder)')
+        if self.config['fmax'] != hparams['fmax']:
+            print('Mismatch parameters: hparams[\'fmax\']=',hparams['fmax'],'!=',self.config['fmax'] ,'(vocoder)')
+        with torch.no_grad():
+            c = mel.transpose(2, 1)
+            f0 = kwargs.get('f0')
+            if f0 is not None and hparams.get('use_nsf'):
+                y = self.model(c, f0).view(-1)
+            else:
+                y = self.model(c).view(-1)
+            return y
+    
     def spec2wav(self, mel, **kwargs):
+        if self.config['audio_sample_rate'] != hparams['audio_sample_rate']:
+            print('Mismatch parameters: hparams[\'audio_sample_rate\']=',hparams['audio_sample_rate'],'!=',self.config['audio_sample_rate'],'(vocoder)')
+        if self.config['audio_num_mel_bins'] != hparams['audio_num_mel_bins']:
+            print('Mismatch parameters: hparams[\'audio_num_mel_bins\']=',hparams['audio_num_mel_bins'],'!=',self.config['audio_num_mel_bins'],'(vocoder)')
+        if self.config['fft_size'] != hparams['fft_size']:
+            print('Mismatch parameters: hparams[\'fft_size\']=',hparams['fft_size'],'!=',self.config['fft_size'],'(vocoder)')
+        if self.config['win_size'] != hparams['win_size']:
+            print('Mismatch parameters: hparams[\'win_size\']=',hparams['win_size'],'!=',self.config['win_size'],'(vocoder)')
+        if self.config['hop_size'] != hparams['hop_size']:
+            print('Mismatch parameters: hparams[\'hop_size\']=',hparams['hop_size'],'!=',self.config['hop_size'],'(vocoder)')
+        if self.config['fmin'] != hparams['fmin']:
+            print('Mismatch parameters: hparams[\'fmin\']=',hparams['fmin'],'!=',self.config['fmin'] ,'(vocoder)')
+        if self.config['fmax'] != hparams['fmax']:
+            print('Mismatch parameters: hparams[\'fmax\']=',hparams['fmax'],'!=',self.config['fmax'] ,'(vocoder)')
         device = self.device
         with torch.no_grad():
             c = torch.FloatTensor(mel).unsqueeze(0).transpose(2, 1).to(device)
