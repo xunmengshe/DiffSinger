@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import torch
 
-from infer_utils import cross_fade
+from inference.infer_utils import cross_fade
 from inference.ds_cascade import DiffSingerCascadeInfer
 from inference.ds_e2e import DiffSingerE2EInfer
 from utils.audio import save_wav
