@@ -3,8 +3,7 @@ import os
 
 import torch
 import numpy as np
-from modules.hifigan.hifigan import HifiGanGenerator
-from src.vocoders.hifigan import HifiGAN
+from src.vocoders.base_vocoder import VOCODERS
 from inference.opencpop.map import cpop_pinyin2ph_func
 
 from utils import load_ckpt
@@ -53,43 +52,24 @@ class BaseSVSInfer:
         self.model.eval()
         self.model.to(self.device)
         self.vocoder = self.build_vocoder()
-        self.vocoder.eval()
-        self.vocoder.to(self.device)
+        self.vocoder.model.eval()
+        self.vocoder.model.to(self.device)
 
     def build_model(self):
         raise NotImplementedError
 
     def forward_model(self, inp):
         raise NotImplementedError
-
+    
     def build_vocoder(self):
-        base_dir = hparams['vocoder_ckpt']
-        config_path = f'{base_dir}/config.yaml'
-        file_path = sorted(glob.glob(f'{base_dir}/model_ckpt_steps_*.*'), key=
-        lambda x: int(re.findall(f'{base_dir}/model_ckpt_steps_(\d+).*', x.replace('\\','/'))[0]))[-1]
-        print('| load HifiGAN: ', file_path)
-        ext = os.path.splitext(file_path)[-1]
-        if ext == '.pth':
-            vocoder = torch.load(file_path, map_location="cpu")
-        elif ext == '.ckpt':
-            ckpt_dict = torch.load(file_path, map_location="cpu")
-            config = set_hparams(config_path, global_hparams=False)
-            state = ckpt_dict["state_dict"]["model_gen"]
-            vocoder = HifiGanGenerator(config)
-            vocoder.load_state_dict(state, strict=True)
-            vocoder.remove_weight_norm()
-        vocoder = vocoder.eval().to(self.device)
-        return vocoder
-
-    def run_vocoder(self, c, **kwargs):
-        c = c.transpose(2, 1)  # [B, 80, T]
-        f0 = kwargs.get('f0')  # [B, T]
-        if f0 is not None and hparams.get('use_nsf'):
-            # f0 = torch.FloatTensor(f0).to(self.device)
-            y = self.vocoder(c, f0).view(-1)
+        if hparams['vocoder'] in VOCODERS:
+            vocoder = VOCODERS[hparams['vocoder']]()
         else:
-            y = self.vocoder(c).view(-1)
-            # [T]
+            vocoder = VOCODERS[hparams['vocoder'].split('.')[-1]]()
+        return vocoder
+        
+    def run_vocoder(self, c, **kwargs):
+        y = self.vocoder.spec2wav_torch(c,**kwargs)
         return y[None]
 
     def preprocess_word_level_input(self, inp):
