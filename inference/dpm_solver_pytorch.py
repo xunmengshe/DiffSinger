@@ -492,7 +492,7 @@ class DPM_Solver:
             # To reproduce the results in DPM-Solver paper
             timesteps_outer = self.get_time_steps(skip_type, t_T, t_0, K, device)
         else:
-            timesteps_outer = self.get_time_steps(skip_type, t_T, t_0, steps, device)[torch.cumsum(torch.tensor([0,] + orders), 0).to(device)]
+            timesteps_outer = self.get_time_steps(skip_type, t_T, t_0, steps, device)[torch.cumsum(torch.tensor([0,] + orders),dim=0).to(device)]
         return timesteps_outer, orders
 
     def denoise_fn(self, x, s):
@@ -1099,7 +1099,7 @@ class DPM_Solver:
                 t_T_inner, t_0_inner = timesteps_outer[i], timesteps_outer[i + 1]
                 timesteps_inner = self.get_time_steps(skip_type=skip_type, t_T=t_T_inner.item(), t_0=t_0_inner.item(), N=order, device=device)
                 lambda_inner = self.noise_schedule.marginal_lambda(timesteps_inner)
-                vec_s, vec_t = t_T_inner.tile(x.shape[0]), t_0_inner.tile(x.shape[0])
+                vec_s, vec_t = t_T_inner.repeat(x.shape[0]), t_0_inner.repeat(x.shape[0])
                 h = lambda_inner[-1] - lambda_inner[0]
                 r1 = None if order <= 1 else (lambda_inner[1] - lambda_inner[0]) / h
                 r2 = None if order <= 2 else (lambda_inner[2] - lambda_inner[0]) / h
