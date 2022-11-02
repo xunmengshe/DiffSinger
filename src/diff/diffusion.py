@@ -271,28 +271,27 @@ class GaussianDiffusion(nn.Module):
                 
                 from inference.dpm_solver_pytorch import NoiseScheduleVP, model_wrapper, DPM_Solver
                 ## 1. Define the noise schedule.
-                ## We support the 'linear' or 'cosine' VP schedule.
-                noise_schedule = NoiseScheduleVP(schedule='linear')
+                noise_schedule = NoiseScheduleVP(schedule='discrete', betas=self.betas)
 
-                ## 2. Convert your discrete-time noise prediction model `model`
-                ## to the continuous-time noise prediction model.
+                ## 2. Convert your discrete-time `model` to the continuous-time
+                # noise prediction model. Here is an example for a diffusion model
+                ## `model` with the noise prediction type ("noise") .
                 def my_wrapper(fn):
                     def wrapped(x, t, **kwargs):
-                        t = t.long()
                         ret = fn(x, t, **kwargs)
                         self.bar.update(1)
                         return ret
                     return wrapped
-                
+                    
                 model_fn = model_wrapper(
                     my_wrapper(self.denoise_fn),
                     noise_schedule,
-                    is_cond_classifier=False,
-                    total_N=1000,
+                    model_type="noise",  # or "x_start" or "v" or "score"
                     model_kwargs={"cond": cond}
                 )
 
-                ## 3. Define dpm-solver and sample by dpm-solver-fast (recommended).
+                ## 3. Define dpm-solver and sample by singlestep DPM-Solver.
+                ## (We recommend singlestep DPM-Solver for unconditional sampling)
                 ## You can adjust the `steps` to balance the computation
                 ## costs and the sample quality.
                 dpm_solver = DPM_Solver(model_fn, noise_schedule)
@@ -302,9 +301,9 @@ class GaussianDiffusion(nn.Module):
                 x = dpm_solver.sample(
                     x,
                     steps=steps,
-                    eps=1e-4,
-                    adaptive_step_size=False,
-                    fast_version=True,
+                    order=3,
+                    skip_type="time_uniform",
+                    method="singlestep",
                 )
             else:
                 for i in tqdm(reversed(range(0, t)), desc='sample time step', total=t):
