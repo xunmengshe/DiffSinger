@@ -35,6 +35,7 @@ def move_key(raw_data, mv_key):
 
 
 def trans_key(raw_data, key):
+    warning_tag = False
     for i in raw_data:
         note_seq_list = i["note_seq"].split(" ")
         new_note_seq_list = []
@@ -45,12 +46,16 @@ def trans_key(raw_data, key):
             else:
                 new_note_seq_list.append(note_seq)
         i["note_seq"] = " ".join(new_note_seq_list)
-
-        f0_seq_list = i["f0_seq"].split(" ")
-        f0_seq_list = [float(x) for x in f0_seq_list]
-        new_f0_seq_list = []
-        for f0_seq in f0_seq_list:
-            new_f0_seq = trans_f0_seq(f0_seq, key)
-            new_f0_seq_list.append(str(new_f0_seq))
-        i["f0_seq"] = " ".join(new_f0_seq_list)
+        if i["f0_seq"]:
+            f0_seq_list = i["f0_seq"].split(" ")
+            f0_seq_list = [float(x) for x in f0_seq_list]
+            new_f0_seq_list = []
+            for f0_seq in f0_seq_list:
+                new_f0_seq = trans_f0_seq(f0_seq, key)
+                new_f0_seq_list.append(str(new_f0_seq))
+            i["f0_seq"] = " ".join(new_f0_seq_list)
+        else:
+            warning_tag = True
+    if warning_tag:
+        print("Warning:parts of f0_seq do not exist, please freeze the pitch line in the editor.\r\n")
     return raw_data
