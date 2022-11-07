@@ -35,6 +35,7 @@ def move_key(raw_data, mv_key):
 
 
 def trans_key(raw_data, key):
+    warning_tag = False
     for i in raw_data:
         note_seq_list = i["note_seq"].split(" ")
         new_note_seq_list = []
@@ -54,5 +55,7 @@ def trans_key(raw_data, key):
                 new_f0_seq_list.append(str(new_f0_seq))
             i["f0_seq"] = " ".join(new_f0_seq_list)
         else:
-            print("f0_seq不存在，请在编辑器中冻结音高线")
+            warning_tag = True
+    if warning_tag:
+        print("Warning:parts of f0_seq do not exist, please freeze the pitch line in the editor.\r\n")
     return raw_data
