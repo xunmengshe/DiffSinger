@@ -45,12 +45,14 @@ def trans_key(raw_data, key):
             else:
                 new_note_seq_list.append(note_seq)
         i["note_seq"] = " ".join(new_note_seq_list)
-
-        f0_seq_list = i["f0_seq"].split(" ")
-        f0_seq_list = [float(x) for x in f0_seq_list]
-        new_f0_seq_list = []
-        for f0_seq in f0_seq_list:
-            new_f0_seq = trans_f0_seq(f0_seq, key)
-            new_f0_seq_list.append(str(new_f0_seq))
-        i["f0_seq"] = " ".join(new_f0_seq_list)
+        if i["f0_seq"]:
+            f0_seq_list = i["f0_seq"].split(" ")
+            f0_seq_list = [float(x) for x in f0_seq_list]
+            new_f0_seq_list = []
+            for f0_seq in f0_seq_list:
+                new_f0_seq = trans_f0_seq(f0_seq, key)
+                new_f0_seq_list.append(str(new_f0_seq))
+            i["f0_seq"] = " ".join(new_f0_seq_list)
+        else:
+            print("f0_seq不存在，请在编辑器中冻结音高线")
     return raw_data
