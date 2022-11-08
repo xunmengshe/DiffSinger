@@ -3,7 +3,6 @@ import os
 import sys
 
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
@@ -14,7 +13,6 @@ from modules.nsf_hifigan.env import AttrDict
 from modules.nsf_hifigan.models import ResBlock1, ResBlock2
 from modules.nsf_hifigan.utils import init_weights
 from utils.hparams import set_hparams, hparams
-
 
 LRELU_SLOPE = 0.1
 
@@ -180,6 +178,7 @@ class Generator(torch.nn.Module):
             else:
                 self.noise_convs.append(Conv1d(1, c_cur, kernel_size=1))
         self.resblocks = nn.ModuleList()
+        ch = None
         for i in range(len(self.ups)):
             ch = h.upsample_initial_channel // (2 ** (i + 1))
             for j, (k, d) in enumerate(zip(h.resblock_kernel_sizes, h.resblock_dilation_sizes)):
@@ -214,12 +213,26 @@ class Generator(torch.nn.Module):
 
     def remove_weight_norm(self):
         print('Removing weight norm...')
-        for l in self.ups:
-            remove_weight_norm(l)
-        for l in self.resblocks:
-            l.remove_weight_norm()
+        for up in self.ups:
+            remove_weight_norm(up)
+        for block in self.resblocks:
+            block.remove_weight_norm()
         remove_weight_norm(self.conv_pre)
         remove_weight_norm(self.conv_post)
+
+
+class NsfHiFiGAN(torch.nn.Module):
+    def __init__(self, device=None):
+        super().__init__()
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = device
+        self.generator, self.hparams = load_model(hparams['vocoder_ckpt'], device)
+
+    def forward(self, mel: torch.Tensor, f0: torch.Tensor):
+        mel = mel.transpose(2, 1) * 2.30259
+        wav = self.generator.forward(mel, f0).view(-1)
+        return wav
 
 
 def load_model(model_path, device):
@@ -240,21 +253,6 @@ def load_model(model_path, device):
     return generator, h
 
 
-class NsfHiFiGAN(torch.nn.Module):
-    def __init__(self, device=None):
-        super().__init__()
-        if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.device = device
-        self.generator, self.hparams = load_model(hparams['vocoder_ckpt'], device)
-
-    def forward(self, mel: torch.Tensor, f0: torch.Tensor):
-        mel = mel.unsqueeze(0).transpose(2, 1) * 2.30259
-        f0 = f0.unsqueeze(0)
-        wav = self.generator.forward(mel, f0).view(-1)
-        return wav
-
-
 def main():
     sys.argv = [
         'inference/svs/ds_e2e.py',
@@ -263,20 +261,20 @@ def main():
     ]
 
     set_hparams(print_hparams=True)
-    device = 'cuda' if torch.cuda.is_available() else 'gpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     vocoder = NsfHiFiGAN(device)
     n_frames = 10
 
     with torch.no_grad():
-        mel = torch.rand(n_frames, 128).to(device)
-        f0 = torch.rand((n_frames,)).to(device) * 880.
+        mel = torch.rand((1, n_frames, 128), device=device)
+        f0 = torch.rand((1, n_frames), device=device)
         torch.onnx.export(
             vocoder,
             (
                 mel,
                 f0
             ),
-            'onnx/assets/nsf_hifigan_test.onnx',
+            'onnx/assets/nsf_hifigan.onnx',
             input_names=[
                 'mel',
                 'f0'
@@ -286,10 +284,10 @@ def main():
             ],
             dynamic_axes={
                 'mel': {
-                    0: 'n_frames',
+                    1: 'n_frames',
                 },
                 'f0': {
-                    0: 'n_frames'
+                    1: 'n_frames'
                 }
             },
             opset_version=11

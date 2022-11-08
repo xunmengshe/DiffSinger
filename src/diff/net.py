@@ -1,22 +1,22 @@
 import math
+from math import sqrt
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import Linear
 
-from math import sqrt
-
-from utils.hparams import hparams
 from modules.commons.common_layers import Mish
-
-Linear = nn.Linear
-ConvTranspose2d = nn.ConvTranspose2d
+from utils.hparams import hparams
 
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
+
+    def __getattr__(self, item):
+        return self[item]
 
     def override(self, attrs):
         if isinstance(attrs, dict):
@@ -80,8 +80,9 @@ class ResidualBlock(nn.Module):
         residual, skip = torch.chunk(y, 2, dim=1)
         # Using torch.split instead of torch.chunk to avoid using onnx::Slice
         # residual, skip = torch.split(y, torch.div(y.shape[1], 2), dim=1)
-        
+
         return (x + residual) / sqrt(2.0), skip
+
 
 class DiffNet(nn.Module):
     def __init__(self, in_dims=80):
