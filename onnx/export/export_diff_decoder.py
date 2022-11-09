@@ -26,7 +26,8 @@ def traceit(func):
 
 
 def extract(a, t):
-    return a.gather(-1, t).reshape((1, 1, 1, 1))
+    return a[t].reshape((1, 1, 1, 1))
+    # return a.gather(-1, t).reshape((1, 1, 1, 1))
     # b, *_ = t.shape
     # out = a.gather(-1, t)
     # shape = (1, *((1,) * (len(x_shape) - 1)))
@@ -125,7 +126,7 @@ class ResidualBlock(nn.Module):
         # residual, skip = torch.chunk(y, 2, dim=1)
         # residual, skip = y[:, :self.residual_channels, :], y[:, self.residual_channels:, :]
 
-        return (residual + skip) / math.sqrt(2), skip
+        return (x + residual) / math.sqrt(2.0), skip
 
 
 class DiffNet(nn.Module):
@@ -237,7 +238,7 @@ class GaussianDiffusion(nn.Module):
         self.register_buffer('spec_min', torch.FloatTensor(spec_min)[None, None, :hparams['keep_bins']])
         self.register_buffer('spec_max', torch.FloatTensor(spec_max)[None, None, :hparams['keep_bins']])
 
-        self.register_buffer('step_range', torch.arange(0, k_step, dtype=torch.long).flip(0).unsqueeze(1))
+        self.register_buffer('step_range', torch.arange(0, k_step, dtype=torch.long).flip(0))
 
     def predict_start_from_noise(self, x_t, t, noise):
         return (
@@ -369,7 +370,6 @@ class GaussianDiffusion(nn.Module):
         #     )
         # else:
 
-        # for i in tqdm(reversed(range(0, t)), desc='sample time step', total=t):
         for i in self.step_range:
             # x = x + i.float() / 1000.0  # Dummy network
             x = self.p_sample(x, i, condition)
@@ -427,7 +427,7 @@ def fix(src, target):
                                         float32 = onnx.helper.make_attribute('to', onnx.TensorProto.FLOAT)
                                         sub_node.attribute.remove(sub_attr)
                                         sub_node.attribute.insert(i, float32)
-                                        print(f'Fixed node: \'{sub_node.name}\'')
+                                        print(f'Fix node: \'{sub_node.name}\'')
                         elif sub_node.name.startswith('Clip'):
                             min_val, max_val = sub_node.input[1], sub_node.input[2]
                             for top_node in model.graph.node:
@@ -437,8 +437,12 @@ def fix(src, target):
                                         value = struct.unpack('d', tensor.raw_data)[0]
                                         tensor.data_type = onnx.TensorProto.FLOAT
                                         tensor.raw_data = struct.pack('f', value)
-                                        print(f'Fixed node \'{top_node.name}\'')
-    # TODO: fix wrong output dimension hint
+                                        print(f'Fix node \'{top_node.name}\'')
+    in_dims = model.graph.input[0].type.tensor_type.shape.dim
+    out_dims = model.graph.output[0].type.tensor_type.shape.dim
+    out_dims.remove(out_dims[1])
+    out_dims.insert(1, in_dims[1])
+    print('Fix graph output dim')
     onnx.checker.check_model(model)
     onnx.save(model, target)
 
@@ -460,7 +464,8 @@ def main():
     with torch.no_grad():
         noised = torch.rand((1, 1, 128, n_frames), device=device)
         condition = torch.rand((1, 256, n_frames), device=device)
-        step = torch.full((1,), 114514, dtype=torch.long, device=device)
+        # step = torch.full((1,), 114514, dtype=torch.long, device=device)
+        step = torch.tensor(114, dtype=torch.long, device=device)
 
         # torch.onnx.export(
         #     decoder.model.denoise_fn,
