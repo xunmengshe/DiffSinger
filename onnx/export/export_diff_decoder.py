@@ -438,6 +438,7 @@ def fix(src, target):
                                         tensor.data_type = onnx.TensorProto.FLOAT
                                         tensor.raw_data = struct.pack('f', value)
                                         print(f'Fixed node \'{top_node.name}\'')
+    # TODO: fix wrong output dimension hint
     onnx.checker.check_model(model)
     onnx.save(model, target)
 
@@ -510,7 +511,7 @@ def main():
                     1: 'n_frames'
                 }
             },
-            opset_version=13,
+            opset_version=11,
             example_outputs=(
                 dummy
             )
@@ -519,4 +520,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    fix('onnx/assets/diff_decoder.onnx', 'onnx/assets/diff_decoder-fix.onnx')
+    fix('onnx/assets/diff_decoder.onnx', 'onnx/assets/diff_decoder.onnx')
