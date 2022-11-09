@@ -1,11 +1,11 @@
 import math
-import struct
 import sys
 from collections import deque
 from functools import partial
 
 import numpy as np
 import onnx
+import onnxsim
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
@@ -22,6 +22,7 @@ def traceit(func):
         print(f'Invoking function \'{func.__name__}\'')
         res = func(*args, **kwargs)
         return res
+
     return run
 
 
@@ -77,7 +78,6 @@ class SinusoidalPosEmb(nn.Module):
         self.register_buffer('emb', torch.exp(torch.arange(half_dim) * -emb).unsqueeze(0))
 
     def forward(self, x):
-
         # Make an initializer
         # emb = torch.from_numpy(np.exp(np.arange(half_dim) * -emb)[None, :].astype(np.float32)).to(device)
 
@@ -239,6 +239,8 @@ class GaussianDiffusion(nn.Module):
         self.register_buffer('spec_max', torch.FloatTensor(spec_max)[None, None, :hparams['keep_bins']])
 
         self.register_buffer('step_range', torch.arange(0, k_step, dtype=torch.long).flip(0))
+        self.register_buffer('clip_min', torch.tensor(-1., dtype=torch.float32))
+        self.register_buffer('clip_max', torch.tensor(1., dtype=torch.float32))
 
     def predict_start_from_noise(self, x_t, t, noise):
         return (
@@ -260,7 +262,7 @@ class GaussianDiffusion(nn.Module):
         x_recon = self.predict_start_from_noise(x, t=t, noise=noise_pred)
 
         # if clip_denoised:
-        x_recon.clamp_(-1., 1.)
+        x_recon.clamp_(self.clip_min, self.clip_max)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
@@ -285,7 +287,7 @@ class GaussianDiffusion(nn.Module):
             a_t_sq, a_prev_sq = a_t.sqrt(), a_prev.sqrt()
 
             x_delta = (a_prev - a_t) * ((1 / (a_t_sq * (a_t_sq + a_prev_sq))) * x - 1 / (
-                        a_t_sq * (((1 - a_prev) * a_t).sqrt() + ((1 - a_t) * a_prev).sqrt())) * noise_t)
+                    a_t_sq * (((1 - a_prev) * a_t).sqrt() + ((1 - a_t) * a_prev).sqrt())) * noise_t)
             x_pred = x + x_delta
 
             return x_pred
@@ -413,13 +415,24 @@ def build_model():
 
 def fix(src, target):
     model = onnx.load(src)
+
+    # The output dimension are wrongly hinted by TorchScript
+    in_dims = model.graph.input[0].type.tensor_type.shape.dim
+    out_dims = model.graph.output[0].type.tensor_type.shape.dim
+    out_dims.remove(out_dims[1])
+    out_dims.insert(1, in_dims[1])
+    print(f'Fix output: \'{model.graph.output[0].name}\'')
+
     for node in model.graph.node:
         if node.name.startswith('Loop'):
+
             for attr in node.attribute:
                 if attr.name == 'body':
-                    body = onnx.helper.get_attribute_value(attr)
+                    body = onnx.helper.get_attribute_value(attr)  # Sub-graph of the model
+
                     for sub_node in body.node:
                         if sub_node.name.startswith('Cast'):
+                            # Some tensors are wrongly cast to float64 due to lack of type inference
                             for i, sub_attr in enumerate(sub_node.attribute):
                                 if sub_attr.name == 'to':
                                     to = onnx.helper.get_attribute_value(sub_attr)
@@ -428,34 +441,110 @@ def fix(src, target):
                                         sub_node.attribute.remove(sub_attr)
                                         sub_node.attribute.insert(i, float32)
                                         print(f'Fix node: \'{sub_node.name}\'')
-                        elif sub_node.name.startswith('Clip'):
-                            min_val, max_val = sub_node.input[1], sub_node.input[2]
-                            for top_node in model.graph.node:
-                                if top_node.name.startswith('Constant') and top_node.output[0] in [min_val, max_val]:
-                                    tensor = onnx.helper.get_attribute_value(top_node.attribute[0])
-                                    if tensor.data_type == onnx.TensorProto.DOUBLE:
-                                        value = struct.unpack('d', tensor.raw_data)[0]
-                                        tensor.data_type = onnx.TensorProto.FLOAT
-                                        tensor.raw_data = struct.pack('f', value)
-                                        print(f'Fix node \'{top_node.name}\'')
+
+    # Run #1 of the simplifier to fix missing value info and type hints and remove unnecessary 'Cast'.
+    model, check = onnxsim.simplify(model, include_subgraph=True)
+    assert check, 'Simplified ONNX model could not be validated'
+
+    # Add type hint to let the simplifier wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'
     in_dims = model.graph.input[0].type.tensor_type.shape.dim
     out_dims = model.graph.output[0].type.tensor_type.shape.dim
-    out_dims.remove(out_dims[1])
-    out_dims.insert(1, in_dims[1])
-    print('Fix graph output dim')
-    onnx.checker.check_model(model)
+    for node in model.graph.node:
+        if node.name.startswith('Loop'):
+            loop_out = node.output[0]
+            for info in model.graph.value_info:
+                if info.name == loop_out:
+                    loop_out_dim = info.type.tensor_type.shape.dim
+                    while len(loop_out_dim) > 0:
+                        loop_out_dim.remove(loop_out_dim[0])
+                    loop_out_dim.insert(0, in_dims[0])  # batch_size
+                    loop_out_dim.insert(1, in_dims[0])  # 1
+                    loop_out_dim.insert(2, out_dims[2])  # mel_bins
+                    loop_out_dim.insert(3, in_dims[1])  # n_frames
+                    print(f'Fix node: \'{node.name}\'')
+
+            for attr in node.attribute:
+                if attr.name == 'body':
+                    body = onnx.helper.get_attribute_value(attr)
+
+                    # Make input dimension hints.
+                    sub_input_name = None
+                    for sub_input in body.input:
+                        sub_dims = sub_input.type.tensor_type.shape.dim
+                        if len(sub_dims) == 4:
+                            sub_input_name = sub_input.name
+                            sub_dims.remove(sub_dims[0])
+                            sub_dims.insert(0, in_dims[0])  # batch_size
+                            sub_dims.remove(sub_dims[1])
+                            sub_dims.insert(1, in_dims[0])  # 1
+                            sub_dims.remove(sub_dims[2])
+                            sub_dims.insert(2, out_dims[2])  # mel_bins
+                            sub_dims.remove(sub_dims[3])
+                            sub_dims.insert(3, in_dims[1])  # n_frames
+                            print(f'Fix input: \'{sub_input.name}\'')
+
+                    # Wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'.
+                    num = None
+                    squeeze_index = None
+                    squeeze_input = None
+                    squeeze_output = None
+
+                    shape_node, gather_node, equal_node, if_node = None, None, None, None
+
+                    for node_index, sub_node in enumerate(body.node):
+                        if sub_node.name.startswith('Shape'):
+                            for shape_input in sub_node.input:
+                                if shape_input == sub_input_name:
+                                    num = sub_node.name.split('_')[1]
+                                    squeeze_index = node_index
+                                    squeeze_input = sub_node.input
+                                    shape_node = sub_node
+                                    for sub_node2 in body.node:
+                                        if sub_node2.name.startswith('Gather'):
+                                            for gather_input in sub_node2.input:
+                                                if gather_input == shape_node.output[0]:
+                                                    gather_node = sub_node2
+                                                    break
+                                    break
+                            else:
+                                break
+                    for sub_node in body.node:
+                        if sub_node.name.startswith('If'):
+                            squeeze_output = sub_node.output
+                            if_node = sub_node
+                            for sub_node2 in body.node:
+                                if sub_node2.name.startswith('Equal'):
+                                    for equal_output in sub_node2.output:
+                                        if equal_output == if_node.input[0]:
+                                            equal_node = sub_node2
+                                            break
+                            break
+
+                    squeeze = onnx.helper.make_node(
+                        op_type='Squeeze',
+                        name=f'Squeeze_{num}',
+                        inputs=squeeze_input,
+                        outputs=squeeze_output
+                    )
+
+                    axes = onnx.helper.make_attribute('axes', [1])
+                    squeeze.attribute.extend([axes])
+                    body.node.insert(squeeze_index, squeeze)
+                    body.node.remove(shape_node)
+                    body.node.remove(gather_node)
+                    body.node.remove(equal_node)
+                    body.node.remove(if_node)
+                    print(f'Fix nodes: '
+                          f'\'{shape_node.name}\', \'{gather_node.name}\', \'{equal_node.name}\', \'{if_node.name}\'')
+
+    # Run #2 of the simplifier to further optimize the graph and reduce dangling sub-graphs.
+    model, check = onnxsim.simplify(model, include_subgraph=True)
+    assert check, 'Simplified ONNX model could not be validated'
+
     onnx.save(model, target)
 
 
-def main():
-    sys.argv = [
-        f'inference/ds_cascade.py',
-        '--config',
-        f'checkpoints/1106_opencpop_ds1000_bin128/config.yaml',
-        '--exp_name',
-        '1106_opencpop_ds1000_bin128'
-    ]
-
+def export(path):
     set_hparams(print_hparams=True)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     decoder = DiffDecoder(hparams, device)
@@ -464,7 +553,6 @@ def main():
     with torch.no_grad():
         noised = torch.rand((1, 1, 128, n_frames), device=device)
         condition = torch.rand((1, 256, n_frames), device=device)
-        # step = torch.full((1,), 114514, dtype=torch.long, device=device)
         step = torch.tensor(114, dtype=torch.long, device=device)
 
         # torch.onnx.export(
@@ -504,7 +592,7 @@ def main():
             (
                 condition,
             ),
-            'onnx/assets/diff_decoder.onnx',
+            path,
             input_names=[
                 'condition'
             ],
@@ -524,5 +612,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.argv = [
+        f'inference/ds_cascade.py',
+        '--config',
+        f'checkpoints/1106_opencpop_ds1000_bin128/config.yaml',
+        '--exp_name',
+        '1106_opencpop_ds1000_bin128'
+    ]
+    export('onnx/assets/diff_decoder.onnx')
     fix('onnx/assets/diff_decoder.onnx', 'onnx/assets/diff_decoder.onnx')
