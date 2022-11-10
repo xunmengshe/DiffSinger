@@ -3,10 +3,12 @@ import os
 import sys
 
 import numpy as np
+import onnx
+import onnxsim
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
-from torch.nn import Conv1d, ConvTranspose1d
+from torch.nn import Conv1d, ConvTranspose1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm
 
 from modules.nsf_hifigan.env import AttrDict
@@ -45,6 +47,16 @@ class SineGen(torch.nn.Module):
         self.sampling_rate = samp_rate
         self.voiced_threshold = voiced_threshold
         self.flag_for_pulse = flag_for_pulse
+        self.diff = Conv2d(
+            in_channels=1,
+            out_channels=1,
+            kernel_size=(2, 1),
+            stride=(1, 1),
+            padding=0,
+            dilation=(1, 1),
+            bias=False
+        )
+        self.diff.weight = nn.Parameter(torch.FloatTensor([[[[-1.], [1.]]]]))
 
     def _f02sine(self, f0_values):
         """ f0_values: (batchsize, length, dim)
@@ -68,10 +80,11 @@ class SineGen(torch.nn.Module):
         # This will not change F0 of sine because (x-1) * 2*pi = x * 2*pi
         tmp_over_one = torch.cumsum(rad_values, 1)
         tmp_over_one -= torch.floor(tmp_over_one)
-        tmp_over_one_idx = (tmp_over_one[:, 1:, :] - tmp_over_one[:, :-1, :]) < 0
-        cumsum_shift = torch.cat((torch.zeros((1, 1, self.dim)).to(f0_values.device), tmp_over_one_idx * -1.0), dim=1)
 
-        sines = torch.sin(torch.cumsum(rad_values + cumsum_shift, dim=1) * (2 * np.pi))
+        diff = self.diff(tmp_over_one.unsqueeze(1)).squeeze(1)  # Equivalent to torch.diff
+        cumsum_shift = (diff < 0).float()
+        cumsum_shift = torch.cat((torch.zeros((1, 1, self.dim)).to(f0_values.device), cumsum_shift), dim=1)
+        sines = torch.sin(torch.cumsum(rad_values - cumsum_shift, dim=1) * (2 * np.pi))
         return sines
 
     def forward(self, f0):
@@ -201,14 +214,18 @@ class Generator(torch.nn.Module):
             x_source = self.noise_convs[i](har_source)
 
             x = x + x_source
-            xs = torch.zeros_like(x)
+            xs = None
             for j in range(self.num_kernels):
-                xs += self.resblocks[i * self.num_kernels + j](x)
+                if xs is None:
+                    xs = self.resblocks[i * self.num_kernels + j](x)
+                else:
+                    xs += self.resblocks[i * self.num_kernels + j](x)
             x = xs / self.num_kernels
         x = functional.leaky_relu(x)
         x = self.conv_post(x)
         x = torch.tanh(x)
 
+        x = x.squeeze(1)
         return x
 
     def remove_weight_norm(self):
@@ -231,7 +248,7 @@ class NsfHiFiGAN(torch.nn.Module):
 
     def forward(self, mel: torch.Tensor, f0: torch.Tensor):
         mel = mel.transpose(2, 1) * 2.30259
-        wav = self.generator.forward(mel, f0).view(-1)
+        wav = self.generator.forward(mel, f0)
         return wav
 
 
@@ -246,20 +263,36 @@ def load_model(model_path, device):
     generator = Generator(h).to(device)
 
     cp_dict = torch.load(model_path)
-    generator.load_state_dict(cp_dict['generator'])
+    generator.load_state_dict(cp_dict['generator'], strict=False)
     generator.eval()
     generator.remove_weight_norm()
     del cp_dict
     return generator, h
 
 
-def main():
-    sys.argv = [
-        'inference/svs/ds_e2e.py',
-        '--config',
-        'configs/midi/cascade/opencs/test.yaml',
-    ]
+def simplify(src, target):
+    model = onnx.load(src)
 
+    in_dims = model.graph.input[0].type.tensor_type.shape.dim
+    outputs = model.graph.output
+    new_output = onnx.helper.make_value_info(
+        name=outputs[0].name,
+        type_proto=onnx.helper.make_tensor_type_proto(
+            elem_type=onnx.TensorProto.FLOAT,
+            shape=(in_dims[0].dim_value, 'n_samples')
+        )
+    )
+    outputs.remove(outputs[0])
+    outputs.insert(0, new_output)
+    print(f'Fix output: \'{model.graph.output[0].name}\'')
+
+    model, check = onnxsim.simplify(model, include_subgraph=True)
+    assert check, 'Simplified ONNX model could not be validated'
+
+    onnx.save(model, target)
+
+
+def export(path):
     set_hparams(print_hparams=True)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     vocoder = NsfHiFiGAN(device)
@@ -274,7 +307,7 @@ def main():
                 mel,
                 f0
             ),
-            'onnx/assets/nsf_hifigan.onnx',
+            path,
             input_names=[
                 'mel',
                 'f0'
@@ -295,4 +328,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.argv = [
+        'inference/svs/ds_e2e.py',
+        '--config',
+        'configs/midi/cascade/opencs/test.yaml',
+    ]
+    export('onnx/assets/nsf_hifigan.onnx')
+    simplify('onnx/assets/nsf_hifigan.onnx', 'onnx/assets/nsf_hifigan.onnx')
