@@ -612,12 +612,13 @@ def export(path):
 
 
 if __name__ == '__main__':
+    exp = '1106_opencpop_ds1000_m128_n384x30'
     sys.argv = [
         f'inference/ds_cascade.py',
         '--config',
-        f'checkpoints/1106_opencpop_ds1000_bin128/config.yaml',
+        f'checkpoints/{exp}/config.yaml',
         '--exp_name',
-        '1106_opencpop_ds1000_bin128'
+        exp
     ]
-    export('onnx/assets/diff_decoder.onnx')
-    fix('onnx/assets/diff_decoder.onnx', 'onnx/assets/diff_decoder.onnx')
+    export(f'onnx/assets/{exp}.onnx')
+    fix(f'onnx/assets/{exp}.onnx', f'onnx/assets/{exp}.onnx')

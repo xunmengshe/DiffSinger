@@ -81,7 +81,7 @@ class SineGen(torch.nn.Module):
         tmp_over_one = torch.cumsum(rad_values, 1)
         tmp_over_one -= torch.floor(tmp_over_one)
 
-        diff = self.diff(tmp_over_one.unsqueeze(1)).squeeze(1)  # Equivalent to torch.diff
+        diff = self.diff(tmp_over_one.unsqueeze(1)).squeeze(1)  # Equivalent to torch.diff, but able to export ONNX
         cumsum_shift = (diff < 0).float()
         cumsum_shift = torch.cat((torch.zeros((1, 1, self.dim)).to(f0_values.device), cumsum_shift), dim=1)
         sines = torch.sin(torch.cumsum(rad_values - cumsum_shift, dim=1) * (2 * np.pi))
