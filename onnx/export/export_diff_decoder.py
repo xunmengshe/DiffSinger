@@ -1,6 +1,5 @@
 import math
 import sys
-from collections import deque
 from functools import partial
 
 import numpy as np
@@ -75,7 +74,7 @@ class SinusoidalPosEmb(nn.Module):
         self.dim = dim
         half_dim = dim // 2
         emb = math.log(10000) / (half_dim - 1)
-        self.register_buffer('emb', torch.exp(torch.arange(half_dim) * -emb).unsqueeze(0))
+        self.register_buffer('emb', torch.exp(torch.arange(half_dim) * torch.tensor(-emb)).unsqueeze(0))
 
     def forward(self, x):
         # Make an initializer
@@ -187,47 +186,130 @@ class DiffNet(nn.Module):
         return x.unsqueeze(1)
 
 
+class NaiveNoisePredictor(nn.Module):
+    def __init__(self):
+        super().__init__()
+        to_torch = partial(torch.tensor, dtype=torch.float32)
+
+        self.register_buffer('clip_min', to_torch(-1.))
+        self.register_buffer('clip_max', to_torch(1.))
+
+    def forward(self, x, noise_pred, t):
+        x_recon = (
+                extract(self.sqrt_recip_alphas_cumprod, t) * x -
+                extract(self.sqrt_recipm1_alphas_cumprod, t) * noise_pred
+        )
+        x_recon = torch.clamp(x_recon, min=self.clip_min, max=self.clip_max)
+
+        model_mean = (
+                extract(self.posterior_mean_coef1, t) * x_recon +
+                extract(self.posterior_mean_coef2, t) * x
+        )
+        model_log_variance = extract(self.posterior_log_variance_clipped, t)
+        noise = torch.randn_like(x)
+        # no noise when t == 0
+        nonzero_mask = ((t > 0).float()).reshape(1, 1, 1, 1)
+        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
+
+
+class PLMSNoisePredictor(nn.Module):
+    def __init__(self):
+        super().__init__()
+        to_torch = partial(torch.tensor, dtype=torch.float32)
+
+        # Below are buffers for TorchScript to pass jit compilation.
+        self.register_buffer('_2', to_torch(2))
+        self.register_buffer('_3', to_torch(3))
+        self.register_buffer('_5', to_torch(5))
+        self.register_buffer('_9', to_torch(9))
+        self.register_buffer('_12', to_torch(12))
+        self.register_buffer('_16', to_torch(16))
+        self.register_buffer('_23', to_torch(23))
+        self.register_buffer('_24', to_torch(24))
+        self.register_buffer('_37', to_torch(37))
+        self.register_buffer('_55', to_torch(55))
+        self.register_buffer('_59', to_torch(59))
+
+    def forward(self, x, noise_t, t, t_prev):
+        a_t = extract(self.alphas_cumprod, t)
+        a_prev = extract(self.alphas_cumprod, t_prev)
+        a_t_sq, a_prev_sq = a_t.sqrt(), a_prev.sqrt()
+
+        x_delta = (a_prev - a_t) * ((1. / (a_t_sq * (a_t_sq + a_prev_sq))) * x - 1. / (
+                a_t_sq * (((1. - a_prev) * a_t).sqrt() + ((1. - a_t) * a_prev).sqrt())) * noise_t)
+        x_pred = x + x_delta
+
+        return x_pred
+
+    # noinspection PyMethodMayBeStatic
+    def predict_stage0(self, noise_pred, noise_pred_prev):
+        return (noise_pred
+                + noise_pred_prev) / self._2
+
+    # noinspection PyMethodMayBeStatic
+    def predict_stage1(self, noise_pred, noise_list):
+        return (noise_pred * self._3
+                - noise_list[-1]) / self._2
+
+    # noinspection PyMethodMayBeStatic
+    def predict_stage2(self, noise_pred, noise_list):
+        return (noise_pred * self._23
+                - noise_list[-1] * self._16
+                + noise_list[-2] * self._5) / self._12
+
+    # noinspection PyMethodMayBeStatic
+    def predict_stage3(self, noise_pred, noise_list):
+        return (noise_pred * self._55
+                - noise_list[-1] * self._59
+                + noise_list[-2] * self._37
+                - noise_list[-3] * self._9) / self._24
+
+
+class MelExtractor(nn.Module):
+    def __init__(self, spec_min, spec_max, keep_bins):
+        super().__init__()
+        self.register_buffer('spec_min', torch.FloatTensor(spec_min)[None, None, :keep_bins])
+        self.register_buffer('spec_max', torch.FloatTensor(spec_max)[None, None, :keep_bins])
+
+    def forward(self, x):
+        x = x.squeeze(1).permute(0, 2, 1)
+        d = (self.spec_max - self.spec_min) / 2
+        m = (self.spec_max + self.spec_min) / 2
+        return x * d + m
+
+
 class GaussianDiffusion(nn.Module):
     def __init__(self, out_dims, timesteps=1000, k_step=1000, spec_min=None, spec_max=None):
         super().__init__()
         self.mel_bins = out_dims
+        self.K_step = k_step
+
         self.denoise_fn = DiffNet(out_dims)
 
-        # if exists(betas):
-        #     betas = betas.detach().cpu().numpy() if isinstance(betas, torch.Tensor) else betas
-        # else:
         if 'schedule_type' in hparams.keys():
             betas = beta_schedule[hparams['schedule_type']](timesteps)
         else:
             betas = cosine_beta_schedule(timesteps)
 
+        # Below are buffers for state_dict to load into.
         alphas = 1. - betas
         alphas_cumprod = np.cumprod(alphas, axis=0)
         alphas_cumprod_prev = np.append(1., alphas_cumprod[:-1])
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.K_step = k_step
-
-        self.noise_list = deque(maxlen=4)
 
         to_torch = partial(torch.tensor, dtype=torch.float32)
 
-        self.register_buffer('betas', to_torch(betas))
         self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))
-        self.register_buffer('alphas_cumprod_prev', to_torch(alphas_cumprod_prev))
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
-        self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod)))
-        self.register_buffer('sqrt_one_minus_alphas_cumprod', to_torch(np.sqrt(1. - alphas_cumprod)))
-        self.register_buffer('log_one_minus_alphas_cumprod', to_torch(np.log(1. - alphas_cumprod)))
         self.register_buffer('sqrt_recip_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod)))
         self.register_buffer('sqrt_recipm1_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod - 1)))
 
         # calculations for posterior q(x_{t-1} | x_t, x_0)
         posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
         # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)
-        self.register_buffer('posterior_variance', to_torch(posterior_variance))
         # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
         self.register_buffer('posterior_log_variance_clipped', to_torch(np.log(np.maximum(posterior_variance, 1e-20))))
         self.register_buffer('posterior_mean_coef1', to_torch(
@@ -235,168 +317,96 @@ class GaussianDiffusion(nn.Module):
         self.register_buffer('posterior_mean_coef2', to_torch(
             (1. - alphas_cumprod_prev) * np.sqrt(alphas) / (1. - alphas_cumprod)))
 
-        self.register_buffer('spec_min', torch.FloatTensor(spec_min)[None, None, :hparams['keep_bins']])
-        self.register_buffer('spec_max', torch.FloatTensor(spec_max)[None, None, :hparams['keep_bins']])
+        self.naive_noise_predictor = NaiveNoisePredictor()
+        self.plms_noise_predictor = PLMSNoisePredictor()
+        self.mel_extractor = MelExtractor(spec_min=spec_min, spec_max=spec_max, keep_bins=hparams['keep_bins'])
 
-        self.register_buffer('step_range', torch.arange(0, k_step, dtype=torch.long).flip(0))
-        self.register_buffer('clip_min', torch.tensor(-1., dtype=torch.float32))
-        self.register_buffer('clip_max', torch.tensor(1., dtype=torch.float32))
+    def build_submodule(self):
+        # Move registered buffers into submodules after loading state dict.
+        self.naive_noise_predictor.register_buffer('sqrt_recip_alphas_cumprod', self.sqrt_recip_alphas_cumprod)
+        self.naive_noise_predictor.register_buffer('sqrt_recipm1_alphas_cumprod', self.sqrt_recipm1_alphas_cumprod)
+        self.naive_noise_predictor.register_buffer(
+            'posterior_log_variance_clipped', self.posterior_log_variance_clipped)
+        self.naive_noise_predictor.register_buffer('posterior_mean_coef1', self.posterior_mean_coef1)
+        self.naive_noise_predictor.register_buffer('posterior_mean_coef2', self.posterior_mean_coef2)
+        self.plms_noise_predictor.register_buffer('alphas_cumprod', self.alphas_cumprod)
 
-    def predict_start_from_noise(self, x_t, t, noise):
-        return (
-                extract(self.sqrt_recip_alphas_cumprod, t) * x_t -
-                extract(self.sqrt_recipm1_alphas_cumprod, t) * noise
-        )
-
-    def q_posterior(self, x_start, x_t, t):
-        posterior_mean = (
-                extract(self.posterior_mean_coef1, t) * x_start +
-                extract(self.posterior_mean_coef2, t) * x_t
-        )
-        posterior_variance = extract(self.posterior_variance, t)
-        posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t)
-        return posterior_mean, posterior_variance, posterior_log_variance_clipped
-
-    def p_mean_variance(self, x, t, cond):
-        noise_pred = self.denoise_fn(x, t, cond)
-        x_recon = self.predict_start_from_noise(x, t=t, noise=noise_pred)
-
-        # if clip_denoised:
-        x_recon.clamp_(self.clip_min, self.clip_max)
-
-        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
-        return model_mean, posterior_variance, posterior_log_variance
-
-    @torch.no_grad()
-    def p_sample(self, x, t, cond):
-        model_mean, _, model_log_variance = self.p_mean_variance(x=x, t=t, cond=cond)
-        noise = torch.randn_like(x)
-        # no noise when t == 0
-        nonzero_mask = ((t > 0).float()).reshape(1, 1, 1, 1)
-        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
-
-    @torch.no_grad()
-    def p_sample_plms(self, x, t, interval, cond, clip_denoised=True, repeat_noise=False):
-        """
-        Use the PLMS method from [Pseudo Numerical Methods for Diffusion Models on Manifolds](https://arxiv.org/abs/2202.09778).
-        """
-
-        def get_x_pred(x, noise_t, t):
-            a_t = extract(self.alphas_cumprod, t)
-            a_prev = extract(self.alphas_cumprod, torch.max(t - interval, torch.zeros_like(t)))
-            a_t_sq, a_prev_sq = a_t.sqrt(), a_prev.sqrt()
-
-            x_delta = (a_prev - a_t) * ((1 / (a_t_sq * (a_t_sq + a_prev_sq))) * x - 1 / (
-                    a_t_sq * (((1 - a_prev) * a_t).sqrt() + ((1 - a_t) * a_prev).sqrt())) * noise_t)
-            x_pred = x + x_delta
-
-            return x_pred
-
-        noise_list = self.noise_list
-        noise_pred = self.denoise_fn(x, t, cond)
-
-        if len(noise_list) == 0:
-            x_pred = get_x_pred(x, noise_pred, t)
-            noise_pred_prev = self.denoise_fn(x_pred, max(t - interval, 0), cond)
-            noise_pred_prime = (noise_pred + noise_pred_prev) / 2
-        elif len(noise_list) == 1:
-            noise_pred_prime = (3 * noise_pred - noise_list[-1]) / 2
-        elif len(noise_list) == 2:
-            noise_pred_prime = (23 * noise_pred - 16 * noise_list[-1] + 5 * noise_list[-2]) / 12
-        else:
-            noise_pred_prime = (55 * noise_pred - 59 * noise_list[-1] + 37 * noise_list[-2] - 9 * noise_list[-3]) / 24
-
-        x_prev = get_x_pred(x, noise_pred_prime, t)
-        noise_list.append(noise_pred)
-
-        return x_prev
-
-    def forward(self, condition):
-        '''
-            conditioning diffusion, use fastspeech2 encoder output as the condition
-        '''
-        # ret = self.fs2(txt_tokens, mel2ph, spk_embed, ref_mels, f0, uv, energy,
-        #                skip_decoder=True, infer=infer, **kwargs)
-        # cond = ret['decoder_inp'].transpose(1, 2)
-        condition = condition.transpose(1, 2)  # (1, n_frames, 256) => (1, 256, n_frames)
+    def forward(self, condition, speedup):
         device = condition.device
+        condition = condition.transpose(1, 2)  # (1, n_frames, 256) => (1, 256, n_frames)
 
-        t = self.K_step
-        # print('===> gaussion start.')
-        x = torch.randn((1, 1, self.mel_bins, condition.shape[2]), device=device)
-        # if hparams.get('pndm_speedup') and hparams['pndm_speedup'] > 1:
-        #     # obsolete: pndm_speedup, now use dpm_solver.
-        #     # self.noise_list = deque(maxlen=4)
-        #     # iteration_interval = hparams['pndm_speedup']
-        #     # for i in tqdm(reversed(range(0, t, iteration_interval)), desc='sample time step',
-        #     #               total=t // iteration_interval):
-        #     #     x = self.p_sample_plms(x, torch.full((b,), i, device=device, dtype=torch.long), iteration_interval,
-        #     #                            cond)
-        #
-        #     from inference.dpm_solver_pytorch import NoiseScheduleVP, model_wrapper, DPM_Solver
-        #     ## 1. Define the noise schedule.
-        #     noise_schedule = NoiseScheduleVP(schedule='discrete', betas=self.betas)
-        #
-        #     ## 2. Convert your discrete-time `model` to the continuous-time
-        #     # noise prediction model. Here is an example for a diffusion model
-        #     ## `model` with the noise prediction type ("noise") .
-        #     def my_wrapper(fn):
-        #         def wrapped(x, t, **kwargs):
-        #             ret = fn(x, t, **kwargs)
-        #             self.bar.update(1)
-        #             return ret
-        #
-        #         return wrapped
-        #
-        #     model_fn = model_wrapper(
-        #         my_wrapper(self.denoise_fn),
-        #         noise_schedule,
-        #         model_type="noise",  # or "x_start" or "v" or "score"
-        #         model_kwargs={"cond": condition}
-        #     )
-        #
-        #     ## 3. Define dpm-solver and sample by singlestep DPM-Solver.
-        #     ## (We recommend singlestep DPM-Solver for unconditional sampling)
-        #     ## You can adjust the `steps` to balance the computation
-        #     ## costs and the sample quality.
-        #     dpm_solver = DPM_Solver(model_fn, noise_schedule)
-        #
-        #     steps = t // hparams["pndm_speedup"]
-        #     self.bar = tqdm(desc="sample time step", total=steps)
-        #     x = dpm_solver.sample(
-        #         x,
-        #         steps=steps,
-        #         order=3,
-        #         skip_type="time_uniform",
-        #         method="singlestep",
-        #     )
-        # else:
+        n_frames = condition.shape[2]
+        step_range = torch.arange(0, self.K_step, speedup, dtype=torch.long, device=device).flip(0)
+        x = torch.randn((1, 1, self.mel_bins, n_frames), device=device)
+        noise_list = torch.zeros((0, 1, 1, self.mel_bins, n_frames), device=device)
 
-        for i in self.step_range:
-            # x = x + i.float() / 1000.0  # Dummy network
-            x = self.p_sample(x, i, condition)
-        x = x.squeeze(1).permute(0, 2, 1)
-        mel = self.denorm_spec(x)
+        if speedup > 1:
+            plms_noise_stage = torch.tensor(0, dtype=torch.long, device=device)
+            for t in step_range:
+                noise_pred = self.denoise_fn(x, t, condition)
+                t_prev = t - speedup
+                t_prev = t_prev * (t_prev > 0)
+
+                if plms_noise_stage == 0:
+                    x_pred = self.plms_noise_predictor(x, noise_pred, t, t_prev)
+                    noise_pred_prev = self.denoise_fn(x_pred, t_prev, condition)
+                    noise_pred_prime = self.plms_noise_predictor.predict_stage0(noise_pred, noise_pred_prev)
+                elif plms_noise_stage == 1:
+                    noise_pred_prime = self.plms_noise_predictor.predict_stage1(noise_pred, noise_list)
+                elif plms_noise_stage == 2:
+                    noise_pred_prime = self.plms_noise_predictor.predict_stage2(noise_pred, noise_list)
+                else:
+                    noise_pred_prime = self.plms_noise_predictor.predict_stage3(noise_pred, noise_list)
+
+                noise_pred = noise_pred.unsqueeze(0)
+                if plms_noise_stage < 3:
+                    noise_list = torch.cat((noise_list, noise_pred), dim=0)
+                    plms_noise_stage = plms_noise_stage + 1
+                else:
+                    noise_list = torch.cat((noise_list[-2:], noise_pred), dim=0)
+
+                x = self.plms_noise_predictor(x, noise_pred_prime, t, t_prev)
+
+            # from dpm_solver import NoiseScheduleVP, model_wrapper, DpmSolver
+            # ## 1. Define the noise schedule.
+            # noise_schedule = NoiseScheduleVP(betas=self.betas)
+            #
+            # ## 2. Convert your discrete-time `model` to the continuous-time
+            # # noise prediction model. Here is an example for a diffusion model
+            # ## `model` with the noise prediction type ("noise") .
+            #
+            # model_fn = model_wrapper(
+            #     self.denoise_fn,
+            #     noise_schedule,
+            #     model_kwargs={"cond": condition}
+            # )
+            #
+            # ## 3. Define dpm-solver and sample by singlestep DPM-Solver.
+            # ## (We recommend singlestep DPM-Solver for unconditional sampling)
+            # ## You can adjust the `steps` to balance the computation
+            # ## costs and the sample quality.
+            # dpm_solver = DpmSolver(model_fn, noise_schedule)
+            #
+            # steps = t // hparams["pndm_speedup"]
+            # x = dpm_solver.sample(x, steps=steps)
+        else:
+            for t in step_range:
+                pred = self.denoise_fn(x, t, condition)
+                x = self.naive_noise_predictor(x, pred, t)
+
+        mel = self.mel_extractor(x)
         return mel
-
-    def denorm_spec(self, x):
-        d = (self.spec_max - self.spec_min) / 2
-        m = (self.spec_max + self.spec_min) / 2
-        return x * d + m
 
 
 class DiffDecoder(nn.Module):
-    def __init__(self, hparams, device):
+    def __init__(self, device):
         super().__init__()
-        self.hparams = hparams
-        self.device = device
         self.model = build_model()
         self.model.eval()
-        self.model.to(self.device)
+        self.model.to(device)
 
-    def forward(self, condition):
-        with torch.no_grad():
-            mel = self.model.forward(condition)  # (1, n_frames, mel_bins)
+    def forward(self, condition, speedup):
+        mel = self.model.forward(condition, speedup)  # (1, n_frames, mel_bins)
         return mel
 
 
@@ -410,7 +420,31 @@ def build_model():
     )
     model.eval()
     load_ckpt(model, hparams['work_dir'], 'model', strict=False)
+    model.build_submodule()
     return model
+
+
+def _fix_cast_nodes(graph):
+    for sub_node in graph.node:
+        if sub_node.op_type == 'If':
+            for attr in sub_node.attribute:
+                branch = onnx.helper.get_attribute_value(attr)
+                _fix_cast_nodes(branch)
+        elif sub_node.op_type == 'Loop':
+            for attr in sub_node.attribute:
+                if attr.name == 'body':
+                    body = onnx.helper.get_attribute_value(attr)
+                    _fix_cast_nodes(body)
+        elif sub_node.op_type == 'Cast':
+            for i, sub_attr in enumerate(sub_node.attribute):
+                if sub_attr.name == 'to':
+                    to = onnx.helper.get_attribute_value(sub_attr)
+                    if to == onnx.TensorProto.DOUBLE:
+                        float32 = onnx.helper.make_attribute('to', onnx.TensorProto.FLOAT)
+                        sub_node.attribute.remove(sub_attr)
+                        sub_node.attribute.insert(i, float32)
+                        print(f'Fix node: \'{sub_node.name}\'')
+                        break
 
 
 def fix(src, target):
@@ -423,24 +457,8 @@ def fix(src, target):
     out_dims.insert(1, in_dims[1])
     print(f'Fix output: \'{model.graph.output[0].name}\'')
 
-    for node in model.graph.node:
-        if node.name.startswith('Loop'):
-
-            for attr in node.attribute:
-                if attr.name == 'body':
-                    body = onnx.helper.get_attribute_value(attr)  # Sub-graph of the model
-
-                    for sub_node in body.node:
-                        if sub_node.name.startswith('Cast'):
-                            # Some tensors are wrongly cast to float64 due to lack of type inference
-                            for i, sub_attr in enumerate(sub_node.attribute):
-                                if sub_attr.name == 'to':
-                                    to = onnx.helper.get_attribute_value(sub_attr)
-                                    if to == onnx.TensorProto.DOUBLE:  # float64
-                                        float32 = onnx.helper.make_attribute('to', onnx.TensorProto.FLOAT)
-                                        sub_node.attribute.remove(sub_attr)
-                                        sub_node.attribute.insert(i, float32)
-                                        print(f'Fix node: \'{sub_node.name}\'')
+    # Fix 'Cast' nodes in sub-graphs that wrongly cast tensors to float64
+    _fix_cast_nodes(model.graph)
 
     # Run #1 of the simplifier to fix missing value info and type hints and remove unnecessary 'Cast'.
     model, check = onnxsim.simplify(model, include_subgraph=True)
@@ -450,10 +468,10 @@ def fix(src, target):
     in_dims = model.graph.input[0].type.tensor_type.shape.dim
     out_dims = model.graph.output[0].type.tensor_type.shape.dim
     for node in model.graph.node:
-        if node.name.startswith('Loop'):
-            loop_out = node.output[0]
+        if node.op_type == 'If':
+            if_out = node.output[0]
             for info in model.graph.value_info:
-                if info.name == loop_out:
+                if info.name == if_out:
                     loop_out_dim = info.type.tensor_type.shape.dim
                     while len(loop_out_dim) > 0:
                         loop_out_dim.remove(loop_out_dim[0])
@@ -462,80 +480,81 @@ def fix(src, target):
                     loop_out_dim.insert(2, out_dims[2])  # mel_bins
                     loop_out_dim.insert(3, in_dims[1])  # n_frames
                     print(f'Fix node: \'{node.name}\'')
+            break
 
-            for attr in node.attribute:
-                if attr.name == 'body':
-                    body = onnx.helper.get_attribute_value(attr)
-
-                    # Make input dimension hints.
-                    sub_input_name = None
-                    for sub_input in body.input:
-                        sub_dims = sub_input.type.tensor_type.shape.dim
-                        if len(sub_dims) == 4:
-                            sub_input_name = sub_input.name
-                            sub_dims.remove(sub_dims[0])
-                            sub_dims.insert(0, in_dims[0])  # batch_size
-                            sub_dims.remove(sub_dims[1])
-                            sub_dims.insert(1, in_dims[0])  # 1
-                            sub_dims.remove(sub_dims[2])
-                            sub_dims.insert(2, out_dims[2])  # mel_bins
-                            sub_dims.remove(sub_dims[3])
-                            sub_dims.insert(3, in_dims[1])  # n_frames
-                            print(f'Fix input: \'{sub_input.name}\'')
-
-                    # Wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'.
-                    num = None
-                    squeeze_index = None
-                    squeeze_input = None
-                    squeeze_output = None
-
-                    shape_node, gather_node, equal_node, if_node = None, None, None, None
-
-                    for node_index, sub_node in enumerate(body.node):
-                        if sub_node.name.startswith('Shape'):
-                            for shape_input in sub_node.input:
-                                if shape_input == sub_input_name:
-                                    num = sub_node.name.split('_')[1]
-                                    squeeze_index = node_index
-                                    squeeze_input = sub_node.input
-                                    shape_node = sub_node
-                                    for sub_node2 in body.node:
-                                        if sub_node2.name.startswith('Gather'):
-                                            for gather_input in sub_node2.input:
-                                                if gather_input == shape_node.output[0]:
-                                                    gather_node = sub_node2
-                                                    break
-                                    break
-                            else:
-                                break
-                    for sub_node in body.node:
-                        if sub_node.name.startswith('If'):
-                            squeeze_output = sub_node.output
-                            if_node = sub_node
-                            for sub_node2 in body.node:
-                                if sub_node2.name.startswith('Equal'):
-                                    for equal_output in sub_node2.output:
-                                        if equal_output == if_node.input[0]:
-                                            equal_node = sub_node2
-                                            break
-                            break
-
-                    squeeze = onnx.helper.make_node(
-                        op_type='Squeeze',
-                        name=f'Squeeze_{num}',
-                        inputs=squeeze_input,
-                        outputs=squeeze_output
-                    )
-
-                    axes = onnx.helper.make_attribute('axes', [1])
-                    squeeze.attribute.extend([axes])
-                    body.node.insert(squeeze_index, squeeze)
-                    body.node.remove(shape_node)
-                    body.node.remove(gather_node)
-                    body.node.remove(equal_node)
-                    body.node.remove(if_node)
-                    print(f'Fix nodes: '
-                          f'\'{shape_node.name}\', \'{gather_node.name}\', \'{equal_node.name}\', \'{if_node.name}\'')
+            # for attr in node.attribute:
+            #     if attr.name == 'body':
+            #         body = onnx.helper.get_attribute_value(attr)
+            #
+            #         # Make input dimension hints.
+            #         sub_input_name = None
+            #         for sub_input in body.input:
+            #             sub_dims = sub_input.type.tensor_type.shape.dim
+            #             if len(sub_dims) == 4:
+            #                 sub_input_name = sub_input.name
+            #                 sub_dims.remove(sub_dims[0])
+            #                 sub_dims.insert(0, in_dims[0])  # batch_size
+            #                 sub_dims.remove(sub_dims[1])
+            #                 sub_dims.insert(1, in_dims[0])  # 1
+            #                 sub_dims.remove(sub_dims[2])
+            #                 sub_dims.insert(2, out_dims[2])  # mel_bins
+            #                 sub_dims.remove(sub_dims[3])
+            #                 sub_dims.insert(3, in_dims[1])  # n_frames
+            #                 print(f'Fix input: \'{sub_input.name}\'')
+            #
+            #         # Wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'.
+            #         num = None
+            #         squeeze_index = None
+            #         squeeze_input = None
+            #         squeeze_output = None
+            #
+            #         shape_node, gather_node, equal_node, if_node = None, None, None, None
+            #
+            #         for node_index, sub_node in enumerate(body.node):
+            #             if sub_node.op_type == 'Shape':
+            #                 for shape_input in sub_node.input:
+            #                     if shape_input == sub_input_name:
+            #                         num = sub_node.name.split('_')[1]
+            #                         squeeze_index = node_index
+            #                         squeeze_input = sub_node.input
+            #                         shape_node = sub_node
+            #                         for sub_node2 in body.node:
+            #                             if sub_node2.op_type == 'Gather':
+            #                                 for gather_input in sub_node2.input:
+            #                                     if gather_input == shape_node.output[0]:
+            #                                         gather_node = sub_node2
+            #                                         break
+            #                         break
+            #                 else:
+            #                     break
+            #         for sub_node in body.node:
+            #             if sub_node.op_type == 'If':
+            #                 squeeze_output = sub_node.output
+            #                 if_node = sub_node
+            #                 for sub_node2 in body.node:
+            #                     if sub_node2.op_type == 'Equal':
+            #                         for equal_output in sub_node2.output:
+            #                             if equal_output == if_node.input[0]:
+            #                                 equal_node = sub_node2
+            #                                 break
+            #                 break
+            #
+            #         squeeze = onnx.helper.make_node(
+            #             op_type='Squeeze',
+            #             name=f'Squeeze_{num}',
+            #             inputs=squeeze_input,
+            #             outputs=squeeze_output
+            #         )
+            #
+            #         axes = onnx.helper.make_attribute('axes', [1])
+            #         squeeze.attribute.extend([axes])
+            #         body.node.insert(squeeze_index, squeeze)
+            #         body.node.remove(shape_node)
+            #         body.node.remove(gather_node)
+            #         body.node.remove(equal_node)
+            #         body.node.remove(if_node)
+            #         print(f'Fix nodes: '
+            #               f'\'{shape_node.name}\', \'{gather_node.name}\', \'{equal_node.name}\', \'{if_node.name}\'')
 
     # Run #2 of the simplifier to further optimize the graph and reduce dangling sub-graphs.
     model, check = onnxsim.simplify(model, include_subgraph=True)
@@ -547,24 +566,79 @@ def fix(src, target):
 def export(path):
     set_hparams(print_hparams=True)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    decoder = DiffDecoder(hparams, device)
+    decoder = DiffDecoder(device)
     n_frames = 10
 
     with torch.no_grad():
-        noised = torch.rand((1, 1, 128, n_frames), device=device)
-        condition = torch.rand((1, 256, n_frames), device=device)
-        step = torch.tensor(114, dtype=torch.long, device=device)
+        shape = (1, 1, hparams['audio_num_mel_bins'], n_frames)
+        noise_t = torch.randn(shape, device=device)
+        noise_list = torch.randn((3, *shape), device=device)
+        condition = torch.rand((1, hparams['hidden_size'], n_frames), device=device)
+        step = (torch.rand((), device=device) * hparams['K_step']).long()
+        speedup = (torch.rand((), device=device) * step / 10.).long()
+        step_prev = torch.maximum(step - speedup, torch.tensor(0, dtype=torch.long, device=device))
+
+        decoder.model.denoise_fn = torch.jit.trace(
+            decoder.model.denoise_fn,
+            (
+                noise_t,
+                step,
+                condition
+            )
+        )
+        decoder.model.naive_noise_predictor = torch.jit.trace(
+            decoder.model.naive_noise_predictor,
+            (
+                noise_t,
+                noise_t,
+                step
+            ),
+            check_trace=False
+        )
+        decoder.model.plms_noise_predictor = torch.jit.trace_module(
+            decoder.model.plms_noise_predictor,
+            {
+                'forward': (
+                    noise_t,
+                    noise_t,
+                    step,
+                    step_prev
+                ),
+                'predict_stage0': (
+                    noise_t,
+                    noise_t
+                ),
+                'predict_stage1': (
+                    noise_t,
+                    noise_list
+                ),
+                'predict_stage2': (
+                    noise_t,
+                    noise_list
+                ),
+                'predict_stage3': (
+                    noise_t,
+                    noise_list
+                ),
+            }
+        )
+        decoder.model.mel_extractor = torch.jit.trace(
+            decoder.model.mel_extractor,
+            (
+                noise_t
+            )
+        )
 
         # torch.onnx.export(
         #     decoder.model.denoise_fn,
         #     (
-        #         noised,
+        #         noise_t,
         #         step,
         #         condition
         #     ),
         #     'onnx/assets/diffnet.onnx',
         #     input_names=[
-        #         'noised',
+        #         'noise_t',
         #         'step',
         #         'condition'
         #     ],
@@ -572,7 +646,7 @@ def export(path):
         #         'denoised'
         #     ],
         #     dynamic_axes={
-        #         'noised': {
+        #         'noise_t': {
         #             3: 'n_frames',
         #         },
         #         'condition': {
@@ -582,19 +656,21 @@ def export(path):
         #     opset_version=11
         # )
 
-        decoder.model.denoise_fn = torch.jit.trace(decoder.model.denoise_fn, (noised, step, condition))
         decoder = torch.jit.script(decoder)
-        condition = torch.rand((1, n_frames, 256), device=device)
-        dummy = decoder.forward(condition)
+        condition = torch.rand((1, n_frames, hparams['hidden_size']), device=device)
+        speedup = torch.tensor(10, dtype=torch.long, device=device)
+        dummy = decoder.forward(condition, speedup)
 
         torch.onnx.export(
             decoder,
             (
                 condition,
+                speedup
             ),
             path,
             input_names=[
-                'condition'
+                'condition',
+                'speedup'
             ],
             output_names=[
                 'mel'
@@ -612,7 +688,7 @@ def export(path):
 
 
 if __name__ == '__main__':
-    exp = '1106_opencpop_ds1000_m128_n384x30'
+    exp = '1104_opencpop_ds1000_m128_n384x20'
     sys.argv = [
         f'inference/ds_cascade.py',
         '--config',
@@ -620,5 +696,6 @@ if __name__ == '__main__':
         '--exp_name',
         exp
     ]
-    export(f'onnx/assets/{exp}.onnx')
-    fix(f'onnx/assets/{exp}.onnx', f'onnx/assets/{exp}.onnx')
+    export(f'onnx/assets/plms.onnx')
+    # fix(f'onnx/assets/{exp}.onnx', f'onnx/assets/{exp}.onnx')
+    fix('onnx/assets/plms.onnx', 'onnx/assets/plms.onnx')
