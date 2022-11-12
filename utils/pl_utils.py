@@ -690,7 +690,6 @@ class BaseTrainer:
         :return:
         """
         if self.checkpoint_callback is not None and self.checkpoint_callback is not False:
-            return # allowing checkpoints with meta information (global_step, etc)
             self.checkpoint_callback.best = checkpoint['checkpoint_callback_best']
 
         self.global_step = checkpoint['global_step']
