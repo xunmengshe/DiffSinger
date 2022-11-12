@@ -218,6 +218,7 @@ class PLMSNoisePredictor(nn.Module):
         to_torch = partial(torch.tensor, dtype=torch.float32)
 
         # Below are buffers for TorchScript to pass jit compilation.
+        self.register_buffer('_1', to_torch(1))
         self.register_buffer('_2', to_torch(2))
         self.register_buffer('_3', to_torch(3))
         self.register_buffer('_5', to_torch(5))
@@ -235,8 +236,8 @@ class PLMSNoisePredictor(nn.Module):
         a_prev = extract(self.alphas_cumprod, t_prev)
         a_t_sq, a_prev_sq = a_t.sqrt(), a_prev.sqrt()
 
-        x_delta = (a_prev - a_t) * ((1. / (a_t_sq * (a_t_sq + a_prev_sq))) * x - 1. / (
-                a_t_sq * (((1. - a_prev) * a_t).sqrt() + ((1. - a_t) * a_prev).sqrt())) * noise_t)
+        x_delta = (a_prev - a_t) * ((self._1 / (a_t_sq * (a_t_sq + a_prev_sq))) * x - self._1 / (
+                a_t_sq * (((self._1 - a_prev) * a_t).sqrt() + ((self._1 - a_t) * a_prev).sqrt())) * noise_t)
         x_pred = x + x_delta
 
         return x_pred
