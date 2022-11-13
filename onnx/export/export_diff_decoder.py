@@ -1,5 +1,6 @@
 import math
 import re
+import struct
 import sys
 from functools import partial
 
@@ -266,6 +267,9 @@ class GaussianDiffusion(nn.Module):
         self.K_step = k_step
 
         self.denoise_fn = DiffNet(out_dims)
+        self.naive_noise_predictor = NaiveNoisePredictor()
+        self.plms_noise_predictor = PLMSNoisePredictor()
+        self.mel_extractor = MelExtractor(spec_min=spec_min, spec_max=spec_max, keep_bins=hparams['keep_bins'])
 
         if 'schedule_type' in hparams.keys():
             betas = beta_schedule[hparams['schedule_type']](timesteps)
@@ -405,17 +409,19 @@ def build_model():
     return model
 
 
-def _fix_cast_nodes(graph):
+def _fix_cast_nodes(graph, logs=None):
+    if logs is None:
+        logs = []
     for sub_node in graph.node:
         if sub_node.op_type == 'If':
             for attr in sub_node.attribute:
                 branch = onnx.helper.get_attribute_value(attr)
-                _fix_cast_nodes(branch)
+                _fix_cast_nodes(branch, logs)
         elif sub_node.op_type == 'Loop':
             for attr in sub_node.attribute:
                 if attr.name == 'body':
                     body = onnx.helper.get_attribute_value(attr)
-                    _fix_cast_nodes(body)
+                    _fix_cast_nodes(body, logs)
         elif sub_node.op_type == 'Cast':
             for i, sub_attr in enumerate(sub_node.attribute):
                 if sub_attr.name == 'to':
@@ -424,12 +430,93 @@ def _fix_cast_nodes(graph):
                         float32 = onnx.helper.make_attribute('to', onnx.TensorProto.FLOAT)
                         sub_node.attribute.remove(sub_attr)
                         sub_node.attribute.insert(i, float32)
-                        print(f'Fix node: \'{sub_node.name}\'')
+                        logs.append(sub_node.name)
                         break
+    return logs
+
+
+def _fold_shape_gather_equal_if_to_squeeze(graph, subgraph, logs=None):
+    if logs is None:
+        logs = []
+
+    # Do folding in sub-graphs recursively.
+    for node in subgraph.node:
+        if node.op_type == 'If':
+            for attr in node.attribute:
+                branch = onnx.helper.get_attribute_value(attr)
+                _fold_shape_gather_equal_if_to_squeeze(graph, branch, logs)
+        elif node.op_type == 'Loop':
+            for attr in node.attribute:
+                if attr.name == 'body':
+                    body = onnx.helper.get_attribute_value(attr)
+                    _fold_shape_gather_equal_if_to_squeeze(graph, body, logs)
+
+    # Do folding in current graph.
+    i_shape = 0
+    while i_shape < len(subgraph.node):
+        if subgraph.node[i_shape].op_type == 'Shape':
+            shape_node = subgraph.node[i_shape]
+            shape_out = shape_node.output[0]
+            i_gather = i_shape + 1
+            while i_gather < len(subgraph.node):
+                if subgraph.node[i_gather].op_type == 'Gather' and subgraph.node[i_gather].input[0] == shape_out:
+                    gather_node = subgraph.node[i_gather]
+                    gather_out = gather_node.output[0]
+                    i_equal = i_gather + 1
+                    while i_equal < len(subgraph.node):
+                        if subgraph.node[i_equal].op_type == 'Equal' and (
+                                subgraph.node[i_equal].input[0] == gather_out
+                                or subgraph.node[i_equal].input[1] == gather_out):
+                            equal_node = subgraph.node[i_equal]
+                            equal_out = equal_node.output[0]
+                            i_if = i_equal + 1
+                            while i_if < len(subgraph.node):
+                                if subgraph.node[i_if].op_type == 'If' and subgraph.node[i_if].input[0] == equal_out:
+                                    # Found the substructure to be folded.
+                                    if_node = subgraph.node[i_if]
+                                    # Search and clean initializer values.
+                                    squeeze_axes_tensor = None
+                                    for tensor in subgraph.initializer:
+                                        if tensor.name == gather_node.input[1]:
+                                            squeeze_axes_tensor = tensor
+                                            subgraph.initializer.remove(tensor)
+                                        elif tensor.name == equal_node.input[1]:
+                                            subgraph.initializer.remove(tensor)
+                                    # Create 'Squeeze' node.
+                                    squeeze_node = onnx.helper.make_node(
+                                        op_type='Squeeze',
+                                        inputs=shape_node.input,
+                                        outputs=if_node.output
+                                    )
+                                    squeeze_axes = onnx.helper.make_attribute(
+                                        key='axes',
+                                        value=[struct.unpack('q', squeeze_axes_tensor.raw_data)[0]]  # unpack int64
+                                    )
+                                    squeeze_node.attribute.extend([squeeze_axes])
+                                    # Replace 'Shape', 'Gather', 'Equal', 'If' with 'Squeeze'.
+                                    subgraph.node.insert(i_shape, squeeze_node)
+                                    subgraph.node.remove(shape_node)
+                                    subgraph.node.remove(gather_node)
+                                    subgraph.node.remove(equal_node)
+                                    subgraph.node.remove(if_node)
+                                    logs.append((shape_node.name, gather_node.name, equal_node.name, if_node.name))
+                                    break
+                                i_if += 1
+                            else:
+                                break
+                        i_equal += 1
+                    else:
+                        break
+                i_gather += 1
+            else:
+                break
+        i_shape += 1
+    return logs
 
 
 def _extract_conv_nodes(graph, weight_pattern, alias_prefix):
     node_dict = {}  # key: pattern match, value: (alias, node)
+    logs = []
 
     def _extract_conv_nodes_recursive(subgraph):
         to_be_removed = []
@@ -460,7 +547,7 @@ def _extract_conv_nodes(graph, weight_pattern, alias_prefix):
                             dep_node.input.insert(dep_idx, out_alias)
                 # Add the node to the remove list
                 to_be_removed.append(sub_node)
-                print(f'Extract node: \'{sub_node.name}\'')
+                logs.append(sub_node.name)
         [subgraph.node.remove(_n) for _n in to_be_removed]
 
     for i, n in enumerate(graph.node):
@@ -482,7 +569,7 @@ def _extract_conv_nodes(graph, weight_pattern, alias_prefix):
                         v.name = alias
                         break
             break
-    pass
+    return logs
 
 
 def fix(src, target):
@@ -493,12 +580,22 @@ def fix(src, target):
     out_dims = model.graph.output[0].type.tensor_type.shape.dim
     out_dims.remove(out_dims[1])
     out_dims.insert(1, in_dims[1])
-    print(f'Annotate output: \'{model.graph.output[0].name}\'')
+    print(f'| annotate output: \'{model.graph.output[0].name}\'')
 
     # Fix 'Cast' nodes in sub-graphs that wrongly cast tensors to float64
-    _fix_cast_nodes(model.graph)
+    fixed_casts = _fix_cast_nodes(model.graph)
+    print('| fix node(s): ')
+    for i, log in enumerate(fixed_casts):
+        if i == len(fixed_casts) - 1:
+            end = '\n'
+        elif i % 10 == 9:
+            end = ',\n'
+        else:
+            end = ', '
+        print(f'\'{log}\'', end=end)
 
     # Run #1 of the simplifier to fix missing value info and type hints and remove unnecessary 'Cast'.
+    print('Running ONNX simplifier...')
     model, check = onnxsim.simplify(model, include_subgraph=True)
     assert check, 'Simplified ONNX model could not be validated'
 
@@ -508,7 +605,7 @@ def fix(src, target):
     then_branch = None
     for node in model.graph.node:
         if node.op_type == 'If':
-            # Add type hint to let the simplifier wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'
+            # Add type hint to let the simplifier fold 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'
             if_out = node.output[0]
             for info in model.graph.value_info:
                 if info.name == if_out:
@@ -519,86 +616,19 @@ def fix(src, target):
                     if_out_dim.insert(1, in_dims[0])  # 1
                     if_out_dim.insert(2, out_dims[2])  # mel_bins
                     if_out_dim.insert(3, in_dims[1])  # n_frames
-                    print(f'Annotate node: \'{node.name}\'')
+                    print(f'| annotate node: \'{node.name}\'')
 
+            # Manually fold 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze' in sub-graphs
+            folded_groups = []
             for attr in node.attribute:
+                branch = onnx.helper.get_attribute_value(attr)
+                folded_groups += _fold_shape_gather_equal_if_to_squeeze(model.graph, branch)
                 if attr.name == 'then_branch':
-                    then_branch = onnx.helper.get_attribute_value(attr)
+                    # Save branch for future use
+                    then_branch = branch
+            print('| fold node group(s): ')
+            print(', '.join(['[' + ', '.join([f'\'{n}\'' for n in log]) + ']' for log in folded_groups]))
             break
-
-            # for attr in node.attribute:
-            #     if attr.name == 'body':
-            #         body = onnx.helper.get_attribute_value(attr)
-            #
-            #         # Make input dimension hints.
-            #         sub_input_name = None
-            #         for sub_input in body.input:
-            #             sub_dims = sub_input.type.tensor_type.shape.dim
-            #             if len(sub_dims) == 4:
-            #                 sub_input_name = sub_input.name
-            #                 sub_dims.remove(sub_dims[0])
-            #                 sub_dims.insert(0, in_dims[0])  # batch_size
-            #                 sub_dims.remove(sub_dims[1])
-            #                 sub_dims.insert(1, in_dims[0])  # 1
-            #                 sub_dims.remove(sub_dims[2])
-            #                 sub_dims.insert(2, out_dims[2])  # mel_bins
-            #                 sub_dims.remove(sub_dims[3])
-            #                 sub_dims.insert(3, in_dims[1])  # n_frames
-            #                 print(f'Fix input: \'{sub_input.name}\'')
-            #
-            #         # Wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'.
-            #         num = None
-            #         squeeze_index = None
-            #         squeeze_input = None
-            #         squeeze_output = None
-            #
-            #         shape_node, gather_node, equal_node, if_node = None, None, None, None
-            #
-            #         for node_index, sub_node in enumerate(body.node):
-            #             if sub_node.op_type == 'Shape':
-            #                 for shape_input in sub_node.input:
-            #                     if shape_input == sub_input_name:
-            #                         num = sub_node.name.split('_')[1]
-            #                         squeeze_index = node_index
-            #                         squeeze_input = sub_node.input
-            #                         shape_node = sub_node
-            #                         for sub_node2 in body.node:
-            #                             if sub_node2.op_type == 'Gather':
-            #                                 for gather_input in sub_node2.input:
-            #                                     if gather_input == shape_node.output[0]:
-            #                                         gather_node = sub_node2
-            #                                         break
-            #                         break
-            #                 else:
-            #                     break
-            #         for sub_node in body.node:
-            #             if sub_node.op_type == 'If':
-            #                 squeeze_output = sub_node.output
-            #                 if_node = sub_node
-            #                 for sub_node2 in body.node:
-            #                     if sub_node2.op_type == 'Equal':
-            #                         for equal_output in sub_node2.output:
-            #                             if equal_output == if_node.input[0]:
-            #                                 equal_node = sub_node2
-            #                                 break
-            #                 break
-            #
-            #         squeeze = onnx.helper.make_node(
-            #             op_type='Squeeze',
-            #             name=f'Squeeze_{num}',
-            #             inputs=squeeze_input,
-            #             outputs=squeeze_output
-            #         )
-            #
-            #         axes = onnx.helper.make_attribute('axes', [1])
-            #         squeeze.attribute.extend([axes])
-            #         body.node.insert(squeeze_index, squeeze)
-            #         body.node.remove(shape_node)
-            #         body.node.remove(gather_node)
-            #         body.node.remove(equal_node)
-            #         body.node.remove(if_node)
-            #         print(f'Fix nodes: '
-            #               f'\'{shape_node.name}\', \'{gather_node.name}\', \'{equal_node.name}\', \'{if_node.name}\'')
 
     # Optimize 'Concat' nodes for shapes
     concat_node = None
@@ -626,7 +656,7 @@ def fix(src, target):
             for i in range(3):
                 node.input.remove(node.input[0])
             node.input.insert(0, shape_prefix_name)
-            print(f'Optimize node: \'{node.name}\'')
+            print(f'| optimize node: \'{node.name}\'')
             break
     for node in then_branch.node:
         if node.op_type == 'Concat':
@@ -639,23 +669,37 @@ def fix(src, target):
             while len(node.input) > 0:
                 node.input.remove(node.input[0])
             node.input.extend([list_length_name, concat_node.output[0]])
-            print(f'Optimize node: \'{node.name}\'')
+            print(f'| optimize node: \'{node.name}\'')
             break
 
     # Extract 'Conv' nodes and cache results of conditioner projection
     # of each residual layer from loop bodies to improve performance.
-    _extract_conv_nodes(model.graph,
-                        r'model\.denoise_fn\.residual_layers\.\d+\.conditioner_projection\.weight',
-                        'cache')
+    extracted_convs = _extract_conv_nodes(
+        model.graph,
+        r'model\.denoise_fn\.residual_layers\.\d+\.conditioner_projection\.weight',
+        'cache'
+    )
+
+    print(f'| extract node(s):')
+    for i, log in enumerate(extracted_convs):
+        if i == len(extracted_convs) - 1:
+            end = '\n'
+        elif i % 10 == 9:
+            end = ',\n'
+        else:
+            end = ', '
+        print(f'\'{log}\'', end=end)
 
     # Run #2 of the simplifier to further optimize the graph and reduce dangling sub-graphs.
+    print('Running ONNX simplifier...')
     model, check = onnxsim.simplify(model, include_subgraph=True)
     assert check, 'Simplified ONNX model could not be validated'
 
     onnx.save(model, target)
+    print('Graph fixed and optimized.')
 
 
-def export(path):
+def export(model_path):
     set_hparams(print_hparams=True)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     decoder = DiffDecoder(device)
@@ -670,6 +714,7 @@ def export(path):
         speedup = (torch.rand((), device=device) * step / 10.).long()
         step_prev = torch.maximum(step - speedup, torch.tensor(0, dtype=torch.long, device=device))
 
+        print('Tracing modules...')
         decoder.model.denoise_fn = torch.jit.trace(
             decoder.model.denoise_fn,
             (
@@ -721,33 +766,6 @@ def export(path):
             )
         )
 
-        # torch.onnx.export(
-        #     decoder.model.denoise_fn,
-        #     (
-        #         noise_t,
-        #         step,
-        #         condition
-        #     ),
-        #     'onnx/assets/diffnet.onnx',
-        #     input_names=[
-        #         'noise_t',
-        #         'step',
-        #         'condition'
-        #     ],
-        #     output_names=[
-        #         'denoised'
-        #     ],
-        #     dynamic_axes={
-        #         'noise_t': {
-        #             3: 'n_frames',
-        #         },
-        #         'condition': {
-        #             2: 'n_frames'
-        #         }
-        #     },
-        #     opset_version=11
-        # )
-
         decoder = torch.jit.script(decoder)
         condition = torch.rand((1, n_frames, hparams['hidden_size']), device=device)
         speedup = torch.tensor(10, dtype=torch.long, device=device)
@@ -759,7 +777,7 @@ def export(path):
                 condition,
                 speedup
             ),
-            path,
+            model_path,
             input_names=[
                 'condition',
                 'speedup'
@@ -777,10 +795,11 @@ def export(path):
                 dummy
             )
         )
+        print('PyTorch ONNX export finished.')
 
 
 if __name__ == '__main__':
-    exp = '1104_opencpop_ds1000_m128_n384x20'
+    exp = '1106_opencpop_ds1000_m128_n384x30'
     sys.argv = [
         f'inference/ds_cascade.py',
         '--config',
@@ -788,6 +807,7 @@ if __name__ == '__main__':
         '--exp_name',
         exp
     ]
-    export(f'onnx/assets/plms.onnx')
-    # fix(f'onnx/assets/{exp}.onnx', f'onnx/assets/{exp}.onnx')
-    fix('onnx/assets/plms.onnx', 'onnx/assets/plms.onnx')
+    path = f'onnx/assets/{exp}.onnx'
+    export(path)
+    fix(path, path)
+    print(f'| export \'model\' to \'{path}\'.')
