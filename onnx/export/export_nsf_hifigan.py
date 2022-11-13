@@ -280,7 +280,7 @@ def simplify(src, target):
     )
     outputs.remove(outputs[0])
     outputs.insert(0, new_output)
-    print(f'Fix output: \'{model.graph.output[0].name}\'')
+    print(f'Annotate output: \'{model.graph.output[0].name}\'')
 
     model, check = onnxsim.simplify(model, include_subgraph=True)
     assert check, 'Simplified ONNX model could not be validated'
