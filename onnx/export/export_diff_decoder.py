@@ -1,4 +1,5 @@
 import math
+import re
 import sys
 from functools import partial
 
@@ -16,29 +17,8 @@ from utils import load_ckpt
 from utils.hparams import hparams, set_hparams
 
 
-def traceit(func):
-    def run(*args, **kwargs):
-        print(f'Invoking function \'{func.__name__}\'')
-        res = func(*args, **kwargs)
-        return res
-
-    return run
-
-
 def extract(a, t):
     return a[t].reshape((1, 1, 1, 1))
-    # return a.gather(-1, t).reshape((1, 1, 1, 1))
-    # b, *_ = t.shape
-    # out = a.gather(-1, t)
-    # shape = (1, *((1,) * (len(x_shape) - 1)))
-    # print(b, shape)
-    # return out.reshape((1, 1, 1, 1))
-
-
-def noise_like(shape, device, repeat=False):
-    repeat_noise = lambda: torch.randn((1, *shape[1:]), device=device).repeat(shape[0], *((1,) * (len(shape) - 1)))
-    noise = lambda: torch.randn(shape, device=device)
-    return repeat_noise() if repeat else noise()
 
 
 def linear_beta_schedule(timesteps, max_beta=hparams.get('max_beta', 0.01)):
@@ -339,10 +319,10 @@ class GaussianDiffusion(nn.Module):
         n_frames = condition.shape[2]
         step_range = torch.arange(0, self.K_step, speedup, dtype=torch.long, device=device).flip(0)
         x = torch.randn((1, 1, self.mel_bins, n_frames), device=device)
-        noise_list = torch.zeros((0, 1, 1, self.mel_bins, n_frames), device=device)
 
         if speedup > 1:
             plms_noise_stage = torch.tensor(0, dtype=torch.long, device=device)
+            noise_list = torch.zeros((0, 1, 1, self.mel_bins, n_frames), device=device)
             for t in step_range:
                 noise_pred = self.denoise_fn(x, t, condition)
                 t_prev = t - speedup
@@ -448,6 +428,63 @@ def _fix_cast_nodes(graph):
                         break
 
 
+def _extract_conv_nodes(graph, weight_pattern, alias_prefix):
+    node_dict = {}  # key: pattern match, value: (alias, node)
+
+    def _extract_conv_nodes_recursive(subgraph):
+        to_be_removed = []
+        for sub_node in subgraph.node:
+            if sub_node.op_type == 'If':
+                for attr in sub_node.attribute:
+                    branch = onnx.helper.get_attribute_value(attr)
+                    _extract_conv_nodes_recursive(branch)
+            elif sub_node.op_type == 'Loop':
+                for attr in sub_node.attribute:
+                    if attr.name == 'body':
+                        body = onnx.helper.get_attribute_value(attr)
+                        _extract_conv_nodes_recursive(body)
+            elif sub_node.op_type == 'Conv' and re.match(weight_pattern, sub_node.input[1]):
+                # Found node to extract
+                cached = node_dict.get(sub_node.input[1])
+                if cached is None:
+                    out_alias = f'{alias_prefix}.{len(node_dict)}'
+                    node_dict[sub_node.input[1]] = (out_alias, sub_node)
+                else:
+                    out_alias = cached[0]
+                out = sub_node.output[0]
+                # Search for nodes downstream the extracted node and match them to the renamed output
+                for dep_node in subgraph.node:
+                    for dep_idx, dep_input in enumerate(dep_node.input):
+                        if dep_input == out:
+                            dep_node.input.remove(out)
+                            dep_node.input.insert(dep_idx, out_alias)
+                # Add the node to the remove list
+                to_be_removed.append(sub_node)
+                print(f'Extract node: \'{sub_node.name}\'')
+        [subgraph.node.remove(_n) for _n in to_be_removed]
+
+    for i, n in enumerate(graph.node):
+        if n.op_type == 'If':
+            for a in n.attribute:
+                b = onnx.helper.get_attribute_value(a)
+                _extract_conv_nodes_recursive(b)
+            for key in reversed(node_dict):
+                alias, node = node_dict[key]
+                # Rename output of the node
+                out_name = node.output[0]
+                node.output.remove(node.output[0])
+                node.output.insert(0, alias)
+                # Insert node into the main graph
+                graph.node.insert(i, node)
+                # Rename value info of the output
+                for v in graph.value_info:
+                    if v.name == out_name:
+                        v.name = alias
+                        break
+            break
+    pass
+
+
 def fix(src, target):
     model = onnx.load(src)
 
@@ -456,7 +493,7 @@ def fix(src, target):
     out_dims = model.graph.output[0].type.tensor_type.shape.dim
     out_dims.remove(out_dims[1])
     out_dims.insert(1, in_dims[1])
-    print(f'Fix output: \'{model.graph.output[0].name}\'')
+    print(f'Annotate output: \'{model.graph.output[0].name}\'')
 
     # Fix 'Cast' nodes in sub-graphs that wrongly cast tensors to float64
     _fix_cast_nodes(model.graph)
@@ -465,22 +502,28 @@ def fix(src, target):
     model, check = onnxsim.simplify(model, include_subgraph=True)
     assert check, 'Simplified ONNX model could not be validated'
 
-    # Add type hint to let the simplifier wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'
     in_dims = model.graph.input[0].type.tensor_type.shape.dim
     out_dims = model.graph.output[0].type.tensor_type.shape.dim
+
+    then_branch = None
     for node in model.graph.node:
         if node.op_type == 'If':
+            # Add type hint to let the simplifier wrap 'Shape', 'Gather', 'Equal', 'If' to 'Squeeze'
             if_out = node.output[0]
             for info in model.graph.value_info:
                 if info.name == if_out:
-                    loop_out_dim = info.type.tensor_type.shape.dim
-                    while len(loop_out_dim) > 0:
-                        loop_out_dim.remove(loop_out_dim[0])
-                    loop_out_dim.insert(0, in_dims[0])  # batch_size
-                    loop_out_dim.insert(1, in_dims[0])  # 1
-                    loop_out_dim.insert(2, out_dims[2])  # mel_bins
-                    loop_out_dim.insert(3, in_dims[1])  # n_frames
-                    print(f'Fix node: \'{node.name}\'')
+                    if_out_dim = info.type.tensor_type.shape.dim
+                    while len(if_out_dim) > 0:
+                        if_out_dim.remove(if_out_dim[0])
+                    if_out_dim.insert(0, in_dims[0])  # batch_size
+                    if_out_dim.insert(1, in_dims[0])  # 1
+                    if_out_dim.insert(2, out_dims[2])  # mel_bins
+                    if_out_dim.insert(3, in_dims[1])  # n_frames
+                    print(f'Annotate node: \'{node.name}\'')
+
+            for attr in node.attribute:
+                if attr.name == 'then_branch':
+                    then_branch = onnx.helper.get_attribute_value(attr)
             break
 
             # for attr in node.attribute:
@@ -556,6 +599,54 @@ def fix(src, target):
             #         body.node.remove(if_node)
             #         print(f'Fix nodes: '
             #               f'\'{shape_node.name}\', \'{gather_node.name}\', \'{equal_node.name}\', \'{if_node.name}\'')
+
+    # Optimize 'Concat' nodes for shapes
+    concat_node = None
+    shape_prefix_name = 'noise.shape.prefix'
+    list_length_name = 'list.length'
+    for node in model.graph.node:
+        if node.op_type == 'Concat':
+            concat_node = node
+            for i, ini in enumerate(model.graph.initializer):
+                if ini.name == node.input[0]:
+                    shape_prefix = onnx.helper.make_tensor(
+                        name=shape_prefix_name,
+                        data_type=onnx.TensorProto.INT64,
+                        dims=(3,),
+                        vals=[out_dims[0].dim_value, 1, out_dims[2].dim_value]
+                    )
+                    list_length = onnx.helper.make_tensor(
+                        name=list_length_name,
+                        data_type=onnx.TensorProto.INT64,
+                        dims=(1,),
+                        vals=[0]
+                    )
+                    model.graph.initializer.extend([shape_prefix, list_length])
+                    break
+            for i in range(3):
+                node.input.remove(node.input[0])
+            node.input.insert(0, shape_prefix_name)
+            print(f'Optimize node: \'{node.name}\'')
+            break
+    for node in then_branch.node:
+        if node.op_type == 'Concat':
+            concat_inputs = list(node.input)
+            dep_nodes = []
+            for dep_node in then_branch.node:
+                if dep_node.op_type == 'Unsqueeze' and dep_node.output[0] in concat_inputs:
+                    dep_nodes.append(dep_node)
+            [then_branch.node.remove(d_n) for d_n in dep_nodes]
+            while len(node.input) > 0:
+                node.input.remove(node.input[0])
+            node.input.extend([list_length_name, concat_node.output[0]])
+            print(f'Optimize node: \'{node.name}\'')
+            break
+
+    # Extract 'Conv' nodes and cache results of conditioner projection
+    # of each residual layer from loop bodies to improve performance.
+    _extract_conv_nodes(model.graph,
+                        r'model\.denoise_fn\.residual_layers\.\d+\.conditioner_projection\.weight',
+                        'cache')
 
     # Run #2 of the simplifier to further optimize the graph and reduce dangling sub-graphs.
     model, check = onnxsim.simplify(model, include_subgraph=True)
