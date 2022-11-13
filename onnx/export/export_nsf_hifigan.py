@@ -37,8 +37,7 @@ class SineGen(torch.nn.Module):
 
     def __init__(self, samp_rate, harmonic_num=0,
                  sine_amp=0.1, noise_std=0.003,
-                 voiced_threshold=0,
-                 flag_for_pulse=False):
+                 voiced_threshold=0):
         super(SineGen, self).__init__()
         self.sine_amp = sine_amp
         self.noise_std = noise_std
@@ -46,7 +45,6 @@ class SineGen(torch.nn.Module):
         self.dim = self.harmonic_num + 1
         self.sampling_rate = samp_rate
         self.voiced_threshold = voiced_threshold
-        self.flag_for_pulse = flag_for_pulse
         self.diff = Conv2d(
             in_channels=1,
             out_channels=1,
@@ -62,10 +60,9 @@ class SineGen(torch.nn.Module):
         """ f0_values: (batchsize, length, dim)
             where dim indicates fundamental tone and overtones
         """
-        # convert to F0 in rad. The interger part n can be ignored
+        # convert to F0 in rad. The integer part n can be ignored
         # because 2 * np.pi * n doesn't affect phase
-        rad_values = (f0_values / self.sampling_rate)
-        rad_values -= torch.floor(rad_values)
+        rad_values = (f0_values / self.sampling_rate).fmod(1.)
 
         # initial phase noise (no noise for fundamental component)
         rand_ini = torch.rand(1, self.dim, device=f0_values.device)
@@ -78,8 +75,7 @@ class SineGen(torch.nn.Module):
         # it is necessary to add -1 whenever \sum_k=1^n rad_value_k > 1.
         # Buffer tmp_over_one_idx indicates the time step to add -1.
         # This will not change F0 of sine because (x-1) * 2*pi = x * 2*pi
-        tmp_over_one = torch.cumsum(rad_values, 1)
-        tmp_over_one -= torch.floor(tmp_over_one)
+        tmp_over_one = torch.cumsum(rad_values, dim=1).fmod(1.)
 
         diff = self.diff(tmp_over_one.unsqueeze(1)).squeeze(1)  # Equivalent to torch.diff, but able to export ONNX
         cumsum_shift = (diff < 0).float()
@@ -102,7 +98,7 @@ class SineGen(torch.nn.Module):
             sine_waves = self._f02sine(fn) * self.sine_amp
 
             # generate uv signal
-            uv = (f0 > self.voiced_threshold).type(torch.float32)
+            uv = (f0 > self.voiced_threshold).float()
 
             # noise: for unvoiced should be similar to sine_amp
             #        std = self.sine_amp/3 -> max value ~ self.sine_amp
