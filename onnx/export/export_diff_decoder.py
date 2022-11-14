@@ -58,9 +58,6 @@ class SinusoidalPosEmb(nn.Module):
         self.register_buffer('emb', torch.exp(torch.arange(half_dim) * torch.tensor(-emb)).unsqueeze(0))
 
     def forward(self, x):
-        # Make an initializer
-        # emb = torch.from_numpy(np.exp(np.arange(half_dim) * -emb)[None, :].astype(np.float32)).to(device)
-
         emb = self.emb * x
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
@@ -95,16 +92,12 @@ class ResidualBlock(nn.Module):
 
         # Using torch.split instead of torch.chunk to avoid using onnx::Slice
         gate, filter = torch.split(y, [self.residual_channels, self.residual_channels], dim=1)
-        # gate, filter = torch.chunk(y, 2, dim=1)
-        # gate, filter = y[:, :self.residual_channels, :], y[:, self.residual_channels:, :]
 
         y = torch.sigmoid(gate) * torch.tanh(filter)
         y = self.output_projection(y)
 
         # Using torch.split instead of torch.chunk to avoid using onnx::Slice
         residual, skip = torch.split(y, [self.residual_channels, self.residual_channels], dim=1)
-        # residual, skip = torch.chunk(y, 2, dim=1)
-        # residual, skip = y[:, :self.residual_channels, :], y[:, self.residual_channels:, :]
 
         return (x + residual) / math.sqrt(2.0), skip
 
@@ -223,23 +216,19 @@ class PLMSNoisePredictor(nn.Module):
 
         return x_pred
 
-    # noinspection PyMethodMayBeStatic
     def predict_stage0(self, noise_pred, noise_pred_prev):
         return (noise_pred
                 + noise_pred_prev) / self._2
 
-    # noinspection PyMethodMayBeStatic
     def predict_stage1(self, noise_pred, noise_list):
         return (noise_pred * self._3
                 - noise_list[-1]) / self._2
 
-    # noinspection PyMethodMayBeStatic
     def predict_stage2(self, noise_pred, noise_list):
         return (noise_pred * self._23
                 - noise_list[-1] * self._16
                 + noise_list[-2] * self._5) / self._12
 
-    # noinspection PyMethodMayBeStatic
     def predict_stage3(self, noise_pred, noise_list):
         return (noise_pred * self._55
                 - noise_list[-1] * self._59
@@ -572,6 +561,62 @@ def _extract_conv_nodes(graph, weight_pattern, alias_prefix):
     return logs
 
 
+def _remove_unused_values(graph):
+    used_values = set()
+    cleaned_values = []
+
+    def _record_usage_recursive(subgraph):
+        for node in subgraph.node:
+            # For 'If' and 'Loop' nodes, do recording recursively
+            if node.op_type == 'If':
+                for attr in node.attribute:
+                    branch = onnx.helper.get_attribute_value(attr)
+                    _record_usage_recursive(branch)
+            elif node.op_type == 'Loop':
+                for attr in node.attribute:
+                    if attr.name == 'body':
+                        body = onnx.helper.get_attribute_value(attr)
+                        _record_usage_recursive(body)
+            # For each node, record its inputs and outputs
+            for input_value in node.input:
+                used_values.add(input_value)
+            for output_value in node.output:
+                used_values.add(output_value)
+
+    def _clean_unused_recursively(subgraph):
+        # Do cleaning in sub-graphs recursively.
+        for node in subgraph.node:
+            if node.op_type == 'If':
+                for attr in node.attribute:
+                    branch = onnx.helper.get_attribute_value(attr)
+                    _clean_unused_recursively(branch)
+            elif node.op_type == 'Loop':
+                for attr in node.attribute:
+                    if attr.name == 'body':
+                        body = onnx.helper.get_attribute_value(attr)
+                        _clean_unused_recursively(body)
+
+        # Do cleaning in current graph.
+        i = 0
+        while i < len(subgraph.initializer):
+            if subgraph.initializer[i].name not in used_values:
+                cleaned_values.append(subgraph.initializer[i].name)
+                subgraph.initializer.remove(subgraph.initializer[i])
+            else:
+                i += 1
+        i = 0
+        while i < len(subgraph.value_info):
+            if subgraph.value_info[i].name not in used_values:
+                cleaned_values.append(subgraph.value_info[i].name)
+                subgraph.value_info.remove(subgraph.value_info[i])
+            else:
+                i += 1
+
+    _record_usage_recursive(graph)
+    _clean_unused_recursively(graph)
+    return cleaned_values
+
+
 def fix(src, target):
     model = onnx.load(src)
 
@@ -690,6 +735,18 @@ def fix(src, target):
             end = ', '
         print(f'\'{log}\'', end=end)
 
+    # Remove unused initializers and value infos
+    cleaned_values = _remove_unused_values(model.graph)
+    print(f'| clean value(s):')
+    for i, log in enumerate(cleaned_values):
+        if i == len(cleaned_values) - 1:
+            end = '\n'
+        elif i % 15 == 14:
+            end = ',\n'
+        else:
+            end = ', '
+        print(f'\'{log}\'', end=end)
+
     # Run #2 of the simplifier to further optimize the graph and reduce dangling sub-graphs.
     print('Running ONNX simplifier...')
     model, check = onnxsim.simplify(model, include_subgraph=True)
@@ -700,7 +757,7 @@ def fix(src, target):
 
 
 def export(model_path):
-    set_hparams(print_hparams=True)
+    set_hparams(print_hparams=False)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     decoder = DiffDecoder(device)
     n_frames = 10
@@ -799,7 +856,7 @@ def export(model_path):
 
 
 if __name__ == '__main__':
-    exp = '1106_opencpop_ds1000_m128_n384x30'
+    exp = '1104_opencpop_ds1000_m128_n384x20'
     sys.argv = [
         f'inference/ds_cascade.py',
         '--config',

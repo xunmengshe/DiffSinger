@@ -240,7 +240,9 @@ class NsfHiFiGAN(torch.nn.Module):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.device = device
-        self.generator, self.hparams = load_model(hparams['vocoder_ckpt'], device)
+        model_path = hparams['vocoder_ckpt']
+        self.generator, self.hparams = load_model(model_path, device)
+        print(f'| load \'NSF-HiFiGAN\' from \'{model_path}\'.')
 
     def forward(self, mel: torch.Tensor, f0: torch.Tensor):
         mel = mel.transpose(2, 1) * 2.30259
@@ -280,16 +282,18 @@ def simplify(src, target):
     )
     outputs.remove(outputs[0])
     outputs.insert(0, new_output)
-    print(f'Annotate output: \'{model.graph.output[0].name}\'')
+    print(f'| annotate output: \'{model.graph.output[0].name}\'')
 
+    print('Running ONNX simplifier...')
     model, check = onnxsim.simplify(model, include_subgraph=True)
     assert check, 'Simplified ONNX model could not be validated'
 
     onnx.save(model, target)
+    print('Graph simplified.')
 
 
-def export(path):
-    set_hparams(print_hparams=True)
+def export(model_path):
+    set_hparams(print_hparams=False)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     vocoder = NsfHiFiGAN(device)
     n_frames = 10
@@ -303,7 +307,7 @@ def export(path):
                 mel,
                 f0
             ),
-            path,
+            model_path,
             input_names=[
                 'mel',
                 'f0'
@@ -321,6 +325,7 @@ def export(path):
             },
             opset_version=11
         )
+        print('PyTorch ONNX export finished.')
 
 
 if __name__ == '__main__':
@@ -329,5 +334,7 @@ if __name__ == '__main__':
         '--config',
         'configs/midi/cascade/opencs/test.yaml',
     ]
-    export('onnx/assets/nsf_hifigan.onnx')
-    simplify('onnx/assets/nsf_hifigan.onnx', 'onnx/assets/nsf_hifigan.onnx')
+    path = 'onnx/assets/nsf_hifigan.onnx'
+    export(path)
+    simplify(path, path)
+    print(f'| export \'NSF-HiFiGAN\' to \'{path}\'.')
