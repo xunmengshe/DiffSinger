@@ -295,7 +295,7 @@ class GaussianDiffusion(nn.Module):
         self.plms_noise_predictor = PLMSNoisePredictor()
         self.mel_extractor = MelExtractor(spec_min=spec_min, spec_max=spec_max, keep_bins=hparams['keep_bins'])
 
-    def build_submodule(self):
+    def build_submodules(self):
         # Move registered buffers into submodules after loading state dict.
         self.naive_noise_predictor.register_buffer('sqrt_recip_alphas_cumprod', self.sqrt_recip_alphas_cumprod)
         self.naive_noise_predictor.register_buffer('sqrt_recipm1_alphas_cumprod', self.sqrt_recipm1_alphas_cumprod)
@@ -394,7 +394,7 @@ def build_model():
     )
     model.eval()
     load_ckpt(model, hparams['work_dir'], 'model', strict=False)
-    model.build_submodule()
+    model.build_submodules()
     return model
 
 
@@ -856,7 +856,7 @@ def export(model_path):
 
 
 if __name__ == '__main__':
-    exp = '1104_opencpop_ds1000_m128_n384x20'
+    exp = '1110_opencpop_ds1000_m128_n512x20'
     sys.argv = [
         f'inference/ds_cascade.py',
         '--config',
