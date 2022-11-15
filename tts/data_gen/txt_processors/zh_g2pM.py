@@ -4,12 +4,22 @@ from pypinyin import pinyin, Style
 from data_gen.data_gen_utils import PUNCS
 from tts.data_gen.txt_processors import zh
 from g2pM import G2pM
+from utils.hparams import hparams
 
 ALL_SHENMU = ['zh', 'ch', 'sh', 'b', 'p', 'm', 'f', 'd', 't', 'n', 'l', 'g', 'k', 'h', 'j',
               'q', 'x', 'r', 'z', 'c', 's', 'y', 'w']
-ALL_YUNMU = ['a', 'ai', 'an', 'ang', 'ao', 'e', 'ei', 'en', 'eng', 'er', 'i', 'ia', 'ian',
-             'iang', 'iao', 'ie', 'in', 'ing', 'iong', 'iu', 'ng', 'o', 'ong', 'ou',
-             'u', 'ua', 'uai', 'uan', 'uang', 'ui', 'un', 'uo', 'v', 'van', 've', 'vn']
+if hparams.get('use_strict_yunmu'):
+    # Added 4 phoneme tags ('E', 'En', 'i0', 'ir') for distinguishing different pronunciations
+    # of one single yunmu ('i' in ['bi', 'chi', 'ci'], 'e' in ['ce', 'ye'], 'an' in ['ban', 'yan']).
+    # See pinyin-to-phoneme dictionary in `phoneme/opencpop-strict.txt` for more details.
+    ALL_YUNMU = ['E', 'En', 'a', 'ai', 'an', 'ang', 'ao', 'e', 'ei', 'en', 'eng', 'er', 'i',
+                 'i0', 'ia', 'ian', 'iang', 'iao', 'ie', 'in', 'ing', 'iong', 'ir', 'iu',
+                 'ng', 'o', 'ong', 'ou', 'u', 'ua', 'uai', 'uan', 'uang', 'ui', 'un', 'uo',
+                 'v', 'van', 've', 'vn']
+else:
+    ALL_YUNMU = ['a', 'ai', 'an', 'ang', 'ao', 'e', 'ei', 'en', 'eng', 'er', 'i', 'ia', 'ian',
+                 'iang', 'iao', 'ie', 'in', 'ing', 'iong', 'iu', 'ng', 'o', 'ong', 'ou',
+                 'u', 'ua', 'uai', 'uan', 'uang', 'ui', 'un', 'uo', 'v', 'van', 've', 'vn']
 
 
 class TxtProcessor(zh.TxtProcessor):
