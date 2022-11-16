@@ -20,7 +20,7 @@ def _build_dict_and_list():
     for _list in _g2p_dictionary.values():
         [_set.add(ph) for ph in _list]
     _phoneme_list = sorted(list(_set))
-    print('| build phone set:', _phoneme_list)
+    print('| load phone set:', _phoneme_list)
 
 
 def build_g2p_dictionary() -> dict:

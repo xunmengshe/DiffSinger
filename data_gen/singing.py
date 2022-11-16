@@ -1,30 +1,11 @@
-import os
-import random
-from copy import deepcopy
-import pandas as pd
-import logging
-from tqdm import tqdm
-import json
 import glob
 import re
-from resemblyzer import VoiceEncoder
-import traceback
-import numpy as np
-import pretty_midi
-import librosa
-from scipy.interpolate import interp1d
-import torch
-from textgrid import TextGrid
 
-from utils.hparams import hparams
-from data_gen.data_gen_utils import build_phone_encoder, get_pitch_parselmouth
-from utils.pitch_utils import f0_to_coarse
-from basics.base_binarizer import BaseBinarizer, BinarizationError, BASE_ITEM_ATTRIBUTES
-from tts.data_gen.binarizer_zh import ZhBinarizer
-from tts.data_gen.txt_processors.zh_g2pM import ALL_VOWELS
-from src.vocoders.base_vocoder import VOCODERS
+from basics.base_binarizer import BaseBinarizer, BASE_ITEM_ATTRIBUTES
+
 
 SINGING_ITEM_ATTRIBUTES = BASE_ITEM_ATTRIBUTES + ['f0_fn']
+
 
 class SingingBinarizer(BaseBinarizer):
     def __init__(self, processed_data_dir=None, item_attributes=SINGING_ITEM_ATTRIBUTES):

@@ -1,13 +1,11 @@
-from typing import DefaultDict
-from data_gen.singing import SingingBinarizer, SINGING_ITEM_ATTRIBUTES
-import os
 import json
-import numpy as np
+import os
 
-from utils.hparams import hparams
-from tts.data_gen.txt_processors.zh_g2pM import ALL_VOWELS
+from data_gen.singing import SingingBinarizer, SINGING_ITEM_ATTRIBUTES
+from tts.data_gen.txt_processors.zh_g2pM import get_all_vowels
 
 MIDISINGING_ITEM_ATTRIBUTES = SINGING_ITEM_ATTRIBUTES + ['pitch_midi', 'midi_dur', 'is_slur', 'ph_durs', 'word_boundary']
+
 
 class MidiSingingBinarizer(SingingBinarizer):
     def __init__(self, processed_data_dir=None, item_attributes=MIDISINGING_ITEM_ATTRIBUTES):
@@ -31,7 +29,8 @@ class MidiSingingBinarizer(SingingBinarizer):
             item['txt'] = song_item['txt']
 
             item['ph'] = ' '.join(song_item['phs'])
-            item['word boundary'] = [1 if x in ALL_VOWELS + ['AP', 'SP', '<SIL>'] else 0 for x in song_item['phs']]
+            vowels = get_all_vowels()
+            item['word boundary'] = [1 if x in vowels + ['AP', 'SP', '<SIL>'] else 0 for x in song_item['phs']]
             item['ph_durs'] = song_item['ph_dur']
 
             item['pitch_midi'] = song_item['notes']

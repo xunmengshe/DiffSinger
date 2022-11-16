@@ -11,7 +11,6 @@ import utils
 from modules.fastspeech.tts_modules import LengthRegulator
 import librosa
 import numpy as np
-from tts.data_gen.txt_processors.zh_g2pM import ALL_VOWELS
 
 
 class DiffSingerE2EInfer(BaseSVSInfer):

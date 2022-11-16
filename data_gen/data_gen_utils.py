@@ -7,6 +7,7 @@ import os
 import torch
 from skimage.transform import resize
 from utils.text_encoder import TokenTextEncoder
+from utils.phoneme_utils import build_phoneme_list
 from utils.pitch_utils import f0_to_coarse
 import struct
 import webrtcvad
@@ -321,10 +322,9 @@ def get_mel2ph(tg_fn, ph, mel, hparams):
     return mel2ph, dur
 
 
-def build_phone_encoder(data_dir):
-    phone_list_file = os.path.join(data_dir, 'phone_set.json')
-    phone_list = json.load(open(phone_list_file, encoding='utf-8'))
-    return TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
+def build_phone_encoder():
+    phone_list = build_phoneme_list()
+    return TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
 
 
 def is_sil_phoneme(p):

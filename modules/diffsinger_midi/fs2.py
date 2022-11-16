@@ -7,7 +7,7 @@ from utils.hparams import hparams
 from utils.pitch_utils import f0_to_coarse, denorm_f0, norm_f0
 from modules.fastspeech.fs2 import FastSpeech2
 from utils.text_encoder import TokenTextEncoder
-from tts.data_gen.txt_processors.zh_g2pM import ALL_VOWELS
+from tts.data_gen.txt_processors.zh_g2pM import get_all_vowels
 from torch.nn import functional as F
 import torch
 from training.diffsinger import Batch2Loss
@@ -63,7 +63,7 @@ class FastSpeech2MIDI(FastSpeech2):
         self.midi_embed = Embedding(300, self.hidden_size, self.padding_idx)
         self.midi_dur_layer = Linear(1, self.hidden_size)
         self.is_slur_embed = Embedding(2, self.hidden_size)
-        yunmu = ['AP', 'SP'] + ALL_VOWELS
+        yunmu = ['AP', 'SP'] + get_all_vowels()
         self.vowel_tokens = [dictionary.encode(ph)[0] for ph in yunmu]
 
     def forward(self, txt_tokens, mel2ph=None, spk_embed_id=None,

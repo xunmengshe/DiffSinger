@@ -93,9 +93,9 @@ class BaseBinarizer:
         return self.spk_map[self.items[item_name]['spk_id']]
 
     def _phone_encoder(self):
-        '''
+        """
             create 'phone_set.json' file if it doesn't exist
-        '''
+        """
         ph_set_fn = f"{hparams['binary_data_dir']}/phone_set.json"
         ph_set = []
         if hparams['reset_phone_dict'] or not os.path.exists(ph_set_fn):
@@ -106,7 +106,7 @@ class BaseBinarizer:
         else:
             ph_set = json.load(open(ph_set_fn, 'r', encoding='utf-8'))
             print("| Load phone set: ", ph_set)
-        return build_phone_encoder(hparams['binary_data_dir'])
+        return build_phone_encoder()
 
     def load_ph_set(self, ph_set):
         raise NotImplementedError

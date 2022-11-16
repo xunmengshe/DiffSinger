@@ -41,7 +41,7 @@ class BaseSVSInfer:
         self.device = device
 
         phone_list = build_phoneme_list()
-        self.ph_encoder = TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
+        self.ph_encoder = TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
         self.pinyin2phs = build_g2p_dictionary()
         self.spk_map = {'opencpop': 0}
 

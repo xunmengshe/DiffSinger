@@ -7,21 +7,38 @@ from g2pM import G2pM
 from utils.phoneme_utils import build_g2p_dictionary
 
 
-# Currently we only support two-part consonant-vowel phoneme systems.
+_initialized = False
 _ALL_CONSONANTS_SET = set()
 _ALL_VOWELS_SET = set()
-for _ph_list in build_g2p_dictionary().values():
-    _ph_count = len(_ph_list)
-    if _ph_count == 0 or _ph_list[0] in ['AP', 'SP']:
-        continue
-    elif len(_ph_list) == 1:
-        _ALL_VOWELS_SET.add(_ph_list[0])
-    else:
-        _ALL_CONSONANTS_SET.add(_ph_list[0])
-        _ALL_VOWELS_SET.add(_ph_list[1])
 
-ALL_CONSONANTS = sorted(list(_ALL_CONSONANTS_SET))
-ALL_VOWELS = sorted(list(_ALL_VOWELS_SET))
+
+def _initialize_consonants_and_vowels():
+    # Currently we only support two-part consonant-vowel phoneme systems.
+    for _ph_list in build_g2p_dictionary().values():
+        _ph_count = len(_ph_list)
+        if _ph_count == 0 or _ph_list[0] in ['AP', 'SP']:
+            continue
+        elif len(_ph_list) == 1:
+            _ALL_VOWELS_SET.add(_ph_list[0])
+        else:
+            _ALL_CONSONANTS_SET.add(_ph_list[0])
+            _ALL_VOWELS_SET.add(_ph_list[1])
+
+
+def get_all_consonants():
+    global _initialized
+    if not _initialized:
+        _initialize_consonants_and_vowels()
+        _initialized = True
+    return sorted(_ALL_CONSONANTS_SET)
+
+
+def get_all_vowels():
+    global _initialized
+    if not _initialized:
+        _initialize_consonants_and_vowels()
+        _initialized = True
+    return sorted(_ALL_VOWELS_SET)
 
 
 class TxtProcessor(zh.TxtProcessor):
@@ -58,8 +75,9 @@ class TxtProcessor(zh.TxtProcessor):
                     p = pinyin(p, style=Style.NORMAL, strict=True)[0][0]
 
             finished = False
+            consonants = get_all_consonants()
             if len([c.isalpha() for c in p]) > 1:
-                for shenmu in ALL_CONSONANTS:
+                for shenmu in consonants:
                     if p.startswith(shenmu) and not p.lstrip(shenmu).isnumeric():
                         ph_list_ += [shenmu, p.lstrip(shenmu)]
                         finished = True

@@ -2,13 +2,12 @@ from multiprocessing.pool import Pool
 
 import matplotlib
 
-from utils.pl_utils import data_loader
-from utils.training_utils import RSQRTSchedule
-from src.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
 from modules.fastspeech.pe import PitchExtractor
+from src.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
+from utils.phoneme_utils import build_phoneme_list
+from utils.training_utils import RSQRTSchedule
 
 matplotlib.use('Agg')
-import os
 import numpy as np
 from tqdm import tqdm
 import torch.distributed as dist
@@ -16,7 +15,6 @@ import torch.distributed as dist
 from basics.base_task import BaseTask
 from utils.hparams import hparams
 from utils.text_encoder import TokenTextEncoder
-import json
 
 import torch
 import torch.optim
@@ -24,11 +22,10 @@ import torch.utils.data
 import utils
 
 
-
 class TtsTask(BaseTask):
     def __init__(self, *args, **kwargs):
         self.vocoder = None
-        self.phone_encoder = self.build_phone_encoder(hparams['binary_data_dir'])
+        self.phone_encoder = self.build_phone_encoder()
         self.padding_idx = self.phone_encoder.pad()
         self.eos_idx = self.phone_encoder.eos()
         self.seg_idx = self.phone_encoder.seg()
@@ -92,17 +89,10 @@ class TtsTask(BaseTask):
                                            num_workers=num_workers,
                                            pin_memory=False)
 
-    def build_phone_encoder(self, data_dir):
-        phone_list_file = os.path.join(data_dir, 'phone_set.json')
-
-        phone_list = json.load(open(phone_list_file, encoding='utf-8'))
-        return TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
-
-    def build_optimizer(self, model):
-        self.optimizer = optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=hparams['lr'])
-        return optimizer
+    @staticmethod
+    def build_phone_encoder():
+        phone_list = build_phoneme_list()
+        return TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
 
     def test_start(self):
         self.saving_result_pool = Pool(8)
@@ -112,6 +102,7 @@ class TtsTask(BaseTask):
             self.pe = PitchExtractor().cuda()
             utils.load_ckpt(self.pe, hparams['pe_ckpt'], 'model', strict=True)
             self.pe.eval()
+
     def test_end(self, outputs):
         self.saving_result_pool.close()
         [f.get() for f in tqdm(self.saving_results_futures)]
@@ -126,6 +117,7 @@ class TtsTask(BaseTask):
         # Assign weight 1.0 to all labels except for padding (id=0).
         dim = target.size(-1)
         return target.abs().sum(-1, keepdim=True).ne(0).float().repeat(1, 1, dim)
+
 
 if __name__ == '__main__':
     TtsTask.start()
