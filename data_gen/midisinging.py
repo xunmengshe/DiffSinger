@@ -5,7 +5,7 @@ import json
 import numpy as np
 
 from utils.hparams import hparams
-from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
+from tts.data_gen.txt_processors.zh_g2pM import ALL_VOWELS
 
 MIDISINGING_ITEM_ATTRIBUTES = SINGING_ITEM_ATTRIBUTES + ['pitch_midi', 'midi_dur', 'is_slur', 'ph_durs', 'word_boundary']
 
@@ -31,7 +31,7 @@ class MidiSingingBinarizer(SingingBinarizer):
             item['txt'] = song_item['txt']
 
             item['ph'] = ' '.join(song_item['phs'])
-            item['word boundary'] = [1 if x in ALL_YUNMU + ['AP', 'SP', '<SIL>'] else 0 for x in song_item['phs']]
+            item['word boundary'] = [1 if x in ALL_VOWELS + ['AP', 'SP', '<SIL>'] else 0 for x in song_item['phs']]
             item['ph_durs'] = song_item['ph_dur']
 
             item['pitch_midi'] = song_item['notes']

@@ -4,22 +4,24 @@ from pypinyin import pinyin, Style
 from data_gen.data_gen_utils import PUNCS
 from tts.data_gen.txt_processors import zh
 from g2pM import G2pM
-from utils.hparams import hparams
+from utils.phoneme_utils import build_g2p_dictionary
 
-ALL_SHENMU = ['zh', 'ch', 'sh', 'b', 'p', 'm', 'f', 'd', 't', 'n', 'l', 'g', 'k', 'h', 'j',
-              'q', 'x', 'r', 'z', 'c', 's', 'y', 'w']
-if hparams.get('use_strict_yunmu'):
-    # Added 4 phoneme tags ('E', 'En', 'i0', 'ir') for distinguishing different pronunciations
-    # of one single yunmu ('i' in ['bi', 'chi', 'ci'], 'e' in ['ce', 'ye'], 'an' in ['ban', 'yan']).
-    # See pinyin-to-phoneme dictionary in `phoneme/opencpop-strict.txt` for more details.
-    ALL_YUNMU = ['E', 'En', 'a', 'ai', 'an', 'ang', 'ao', 'e', 'ei', 'en', 'eng', 'er', 'i',
-                 'i0', 'ia', 'ian', 'iang', 'iao', 'ie', 'in', 'ing', 'iong', 'ir', 'iu',
-                 'ng', 'o', 'ong', 'ou', 'u', 'ua', 'uai', 'uan', 'uang', 'ui', 'un', 'uo',
-                 'v', 'van', 've', 'vn']
-else:
-    ALL_YUNMU = ['a', 'ai', 'an', 'ang', 'ao', 'e', 'ei', 'en', 'eng', 'er', 'i', 'ia', 'ian',
-                 'iang', 'iao', 'ie', 'in', 'ing', 'iong', 'iu', 'ng', 'o', 'ong', 'ou',
-                 'u', 'ua', 'uai', 'uan', 'uang', 'ui', 'un', 'uo', 'v', 'van', 've', 'vn']
+
+# Currently we only support two-part consonant-vowel phoneme systems.
+_ALL_CONSONANTS_SET = set()
+_ALL_VOWELS_SET = set()
+for _ph_list in build_g2p_dictionary().values():
+    _ph_count = len(_ph_list)
+    if _ph_count == 0 or _ph_list[0] in ['AP', 'SP']:
+        continue
+    elif len(_ph_list) == 1:
+        _ALL_VOWELS_SET.add(_ph_list[0])
+    else:
+        _ALL_CONSONANTS_SET.add(_ph_list[0])
+        _ALL_VOWELS_SET.add(_ph_list[1])
+
+ALL_CONSONANTS = sorted(list(_ALL_CONSONANTS_SET))
+ALL_VOWELS = sorted(list(_ALL_VOWELS_SET))
 
 
 class TxtProcessor(zh.TxtProcessor):
@@ -57,7 +59,7 @@ class TxtProcessor(zh.TxtProcessor):
 
             finished = False
             if len([c.isalpha() for c in p]) > 1:
-                for shenmu in ALL_SHENMU:
+                for shenmu in ALL_CONSONANTS:
                     if p.startswith(shenmu) and not p.lstrip(shenmu).isnumeric():
                         ph_list_ += [shenmu, p.lstrip(shenmu)]
                         finished = True

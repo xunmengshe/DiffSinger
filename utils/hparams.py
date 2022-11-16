@@ -1,5 +1,7 @@
 import argparse
 import os
+import shutil
+
 import yaml
 
 global_print_hparams = True
@@ -103,10 +105,22 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
             else:
                 hparams_[k] = type(hparams_[k])(v)
 
+    dictionary = hparams_.get('g2p_dictionary')
     if args_work_dir != '' and (not os.path.exists(ckpt_config_path) or args.reset) and not args.infer:
         os.makedirs(hparams_['work_dir'], exist_ok=True)
         with open(ckpt_config_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump(hparams_, f)
+        if dictionary is not None:
+            shutil.copy(dictionary, os.path.join(hparams_['work_dir'], os.path.basename(dictionary)))
+
+    if dictionary is None:
+        dictionary = 'dictionaries/opencpop.txt'
+    if not os.path.exists(dictionary):
+        ckpt_dictionary = os.path.join(hparams_['work_dir'], os.path.basename(dictionary))
+        if not os.path.exists(ckpt_dictionary):
+            raise FileNotFoundError(f'G2P dictionary not found: {dictionary}')
+        dictionary = ckpt_dictionary
+    hparams_['g2p_dictionary'] = dictionary
 
     hparams_['infer'] = args.infer
     hparams_['debug'] = args.debug

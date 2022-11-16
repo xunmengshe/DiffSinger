@@ -10,7 +10,7 @@ from utils.hparams import set_hparams, hparams
 import librosa
 import glob
 import re
-from utils.phoneme_utils import g2p_dictionary
+from utils.phoneme_utils import build_g2p_dictionary, build_phoneme_list
 from utils.text_encoder import TokenTextEncoder
 from pypinyin import pinyin, lazy_pinyin, Style
 
@@ -40,12 +40,9 @@ class BaseSVSInfer:
         self.hparams = hparams
         self.device = device
 
-        phone_list = ["AP", "SP", "a", "ai", "an", "ang", "ao", "b", "c", "ch", "d", "e", "ei", "en", "eng", "er", "f", "g",
-                "h", "i", "ia", "ian", "iang", "iao", "ie", "in", "ing", "iong", "iu", "j", "k", "l", "m", "n", "o",
-                "ong", "ou", "p", "q", "r", "s", "sh", "t", "u", "ua", "uai", "uan", "uang", "ui", "un", "uo", "v",
-                "van", "ve", "vn", "w", "x", "y", "z", "zh"]
+        phone_list = build_phoneme_list()
         self.ph_encoder = TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
-        self.pinyin2phs = g2p_dictionary
+        self.pinyin2phs = build_g2p_dictionary()
         self.spk_map = {'opencpop': 0}
 
         self.model = self.build_model()

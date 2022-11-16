@@ -12,7 +12,7 @@ import utils
 from basics.base_binarizer import BinarizationError
 from data_gen.data_gen_utils import get_pitch_parselmouth
 from src.vocoders.base_vocoder import VOCODERS
-from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
+from tts.data_gen.txt_processors.zh_g2pM import ALL_VOWELS
 from utils.hparams import hparams
 
 
@@ -42,7 +42,7 @@ class File2Batch:
             temp_dict['ph'] = song_info[2]
             # self.item2wdb[item_name] = list(np.nonzero([1 if x in ALL_YUNMU + ['AP', 'SP'] else 0 for x in song_info[2].split()])[0])
             temp_dict['word_boundary'] = np.array(
-                [1 if x in ALL_YUNMU + ['AP', 'SP'] else 0 for x in song_info[2].split()])
+                [1 if x in ALL_VOWELS + ['AP', 'SP'] else 0 for x in song_info[2].split()])
             temp_dict['ph_durs'] = [float(x) for x in song_info[5].split(" ")]
 
             temp_dict['pitch_midi'] = np.array([note_to_midi(x.split("/")[0]) if x != 'rest' else 0

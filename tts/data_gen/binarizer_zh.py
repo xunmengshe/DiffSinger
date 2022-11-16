@@ -2,7 +2,7 @@ import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
-from tts.data_gen.txt_processors.zh_g2pM import ALL_SHENMU
+from tts.data_gen.txt_processors.zh_g2pM import ALL_CONSONANTS
 from basics.base_binarizer import BaseBinarizer, BinarizationError
 from data_gen.data_gen_utils import get_mel2ph
 from utils.hparams import set_hparams, hparams
@@ -81,9 +81,9 @@ class ZhBinarizer(BaseBinarizer):
         # 声母和韵母等长
         for i in range(len(dur)):
             p = ph_list[i]
-            if p in ALL_SHENMU:
+            if p in ALL_CONSONANTS:
                 p_next = ph_list[i + 1]
-                if not (dur[i] > 0 and p_next[0].isalpha() and p_next not in ALL_SHENMU):
+                if not (dur[i] > 0 and p_next[0].isalpha() and p_next not in ALL_CONSONANTS):
                     print(f"assert dur[i] > 0 and p_next[0].isalpha() and p_next not in ALL_SHENMU, "
                           f"dur[i]: {dur[i]}, p: {p}, p_next: {p_next}.")
                     continue

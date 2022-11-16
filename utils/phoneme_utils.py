@@ -1,34 +1,45 @@
-import os.path
-
 from utils.hparams import hparams
 
 
-g2p_dictionary = {
+_has_cache = False
+_g2p_dictionary = {
     'AP': ['AP'],
     'SP': ['SP']
 }
-_dict = 'opencpop-strict.txt' if hparams.get('use_strict_yunmu') else 'opencpop.txt'
-_set = set()
-with open(os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        'phoneme',
-        _dict
-), 'r', encoding='utf8') as _df:
-    _lines = _df.readlines()
-for _line in _lines:
-    _pinyin, _ph_str = _line.strip().split('\t')
-    g2p_dictionary[_pinyin] = _ph_str.split()
-for _list in g2p_dictionary.values():
-    [_set.add(ph) for ph in _list]
-
-phoneme_set = sorted(list(_set))
+_phoneme_list: list
 
 
-def pinyin_to_phoneme(pinyin: str) -> list:
-    return g2p_dictionary[pinyin]
+def _build_dict_and_list():
+    global _g2p_dictionary, _phoneme_list
+    _set = set()
+    with open(hparams['g2p_dictionary'], 'r', encoding='utf8') as _df:
+        _lines = _df.readlines()
+    for _line in _lines:
+        _pinyin, _ph_str = _line.strip().split('\t')
+        _g2p_dictionary[_pinyin] = _ph_str.split()
+    for _list in _g2p_dictionary.values():
+        [_set.add(ph) for ph in _list]
+    _phoneme_list = sorted(list(_set))
+    print('| build phone set:', _phoneme_list)
 
 
-def old_to_strict(phonemes: list, slurs: list) -> list:
+def build_g2p_dictionary() -> dict:
+    global _has_cache
+    if not _has_cache:
+        _build_dict_and_list()
+        _has_cache = True
+    return _g2p_dictionary
+
+
+def build_phoneme_list() -> list:
+    global _has_cache
+    if not _has_cache:
+        _build_dict_and_list()
+        _has_cache = True
+    return _phoneme_list
+
+
+def opencpop_old_to_strict(phonemes: list, slurs: list) -> list:
     assert len(phonemes) == len(slurs), 'Length of phonemes mismatches length of slurs!'
     new_phonemes = [p for p in phonemes]
     i = 0
@@ -65,11 +76,11 @@ def old_to_strict(phonemes: list, slurs: list) -> list:
 
 
 if __name__ == '__main__':
-    with open('../phoneme/transcriptions-revised.txt', 'r', encoding='utf8') as f:
+    with open('../dictionaries/transcriptions-revised.txt', 'r', encoding='utf8') as f:
         _utterances = f.readlines()
     utterances: list = [u.strip().split('|') for u in _utterances]
     for u in utterances:
-        u[2] = ' '.join(old_to_strict(u[2].split(), u[6].split()))
-    with open('../phoneme/transcriptions-strict.txt', 'w', encoding='utf-8') as f:
+        u[2] = ' '.join(opencpop_old_to_strict(u[2].split(), u[6].split()))
+    with open('../dictionaries/transcriptions-strict.txt', 'w', encoding='utf-8') as f:
         for u in utterances:
             print('|'.join(u), file=f)
