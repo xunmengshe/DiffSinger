@@ -6,6 +6,7 @@ from tts.data_gen.txt_processors.zh_g2pM import get_all_consonants
 from basics.base_binarizer import BaseBinarizer, BinarizationError
 from data_gen.data_gen_utils import get_mel2ph
 from utils.hparams import set_hparams, hparams
+from utils.phoneme_utils import build_phoneme_list
 import numpy as np
 import pandas as pd
 
@@ -40,8 +41,7 @@ class ZhBinarizer(BaseBinarizer):
 
     def load_ph_set(self, ph_set):
         # load ph_set from pre-given dict
-        for processed_data_dir in self.processed_data_dirs:
-            ph_set += [x.split(' ')[0] for x in open(f'{processed_data_dir}/dict.txt', encoding='utf-8').readlines()]
+        ph_set += build_phoneme_list()
 
     @property
     def train_item_names(self):

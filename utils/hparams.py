@@ -113,7 +113,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         os.makedirs(hparams_['work_dir'], exist_ok=True)
         with open(ckpt_config_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump(hparams_, f)
-        if not os.path.exists(ckpt_dictionary):
+        if hparams_.get('reset_phone_dict') or not os.path.exists(ckpt_dictionary):
             shutil.copy(dictionary, ckpt_dictionary)
 
     ckpt_dictionary_exists = os.path.exists(ckpt_dictionary)
@@ -121,6 +121,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         raise FileNotFoundError(f'G2P dictionary not found in either of the following paths:\n'
                                 f' - \'{dictionary}\'\n'
                                 f' - \'{ckpt_dictionary}\'')
+    hparams_['original_g2p_dictionary'] = dictionary
     if ckpt_dictionary_exists:
         dictionary = ckpt_dictionary
     hparams_['g2p_dictionary'] = dictionary

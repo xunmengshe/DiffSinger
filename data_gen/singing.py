@@ -2,6 +2,7 @@ import glob
 import re
 
 from basics.base_binarizer import BaseBinarizer, BASE_ITEM_ATTRIBUTES
+from utils.phoneme_utils import build_phoneme_list
 
 
 SINGING_ITEM_ATTRIBUTES = BASE_ITEM_ATTRIBUTES + ['f0_fn']
@@ -56,6 +57,16 @@ class SingingBinarizer(BaseBinarizer):
         # load those phones that appear in the actual data
         for item in self.items.values():
             ph_set += item['ph'].split(' ')
+        # check unrecognizable or missing phones
+        actual_phone_set = set(ph_set)
+        required_phone_set = set(build_phoneme_list())
+        if actual_phone_set != required_phone_set:
+            unrecognizable_phones = actual_phone_set.difference(required_phone_set)
+            missing_phones = required_phone_set.difference(actual_phone_set)
+            assert False, 'transcriptions and dictionary mismatch:\n' \
+                          f' + {sorted(unrecognizable_phones)}' \
+                          f' - {sorted(missing_phones)}'
+
 
 if __name__ == "__main__":
     # NOTE: this line is *isolated* from other scripts, which means

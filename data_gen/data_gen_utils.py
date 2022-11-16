@@ -7,7 +7,6 @@ import os
 import torch
 from skimage.transform import resize
 from utils.text_encoder import TokenTextEncoder
-from utils.phoneme_utils import build_phoneme_list
 from utils.pitch_utils import f0_to_coarse
 import struct
 import webrtcvad
@@ -322,8 +321,7 @@ def get_mel2ph(tg_fn, ph, mel, hparams):
     return mel2ph, dur
 
 
-def build_phone_encoder():
-    phone_list = build_phoneme_list()
+def build_phone_encoder(phone_list):
     return TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
 
 
