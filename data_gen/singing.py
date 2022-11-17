@@ -87,7 +87,7 @@ class SingingBinarizer(BaseBinarizer):
         for i, key in enumerate(sorted(phoneme_map.keys())):
             if i == len(phone_set) - 1:
                 end = '\n'
-            elif i % 15 == 14:
+            elif i % 10 == 9:
                 end = ',\n'
             else:
                 end = ', '
