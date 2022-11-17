@@ -45,7 +45,7 @@ ban	b an
 
 Note that you do not need (actually you must not) put `AP` and `SP` in the dictionary.
 
-If one syllable is mapped to two phonemes, the phoneme will be regarded as vowel. If one syllable is mapped to two phonemes, the first one will be regarded as consonant and the other as vowel. Syllables that are mapped to more than two phonemes are not allowed.
+If one syllable is mapped to one phoneme, the phoneme will be regarded as a vowel. If one syllable is mapped to two phonemes, the first one will be regarded as a consonant and the other as a vowel. Syllables that are mapped to more than two phonemes are not allowed.
 
 Vowel phonemes are used to align with the head of the note to keep the song in a correct rhythm. See this [issue](https://github.com/MoonInTheRiver/DiffSinger/issues/60) for explanations.
 
@@ -82,7 +82,7 @@ AssertionError: transcriptions and dictionary mismatch.
  (-) ['AP', 'SP']
 ```
 
-This means there are 4 unexpected symbols in the data labels (`ir`, `i0`, `E`, `En`) and 2 missing phonemes that are not covered by the data labels.
+This means there are 4 unexpected symbols in the data labels (`ir`, `i0`, `E`, `En`) and 2 missing phonemes that are not covered by the data labels (`AP`, `SP`).
 
 #### Inference with a custom dictionary
 
