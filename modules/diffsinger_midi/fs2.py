@@ -6,9 +6,21 @@ from utils.cwt import cwt2f0
 from utils.hparams import hparams
 from utils.pitch_utils import f0_to_coarse, denorm_f0, norm_f0
 from modules.fastspeech.fs2 import FastSpeech2
+from utils.text_encoder import TokenTextEncoder
+from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
+from torch.nn import functional as F
+import torch
+from training.diffsinger import Batch2Loss
 
 
 class FastspeechMIDIEncoder(FastspeechEncoder):
+    '''
+        compared to FastspeechEncoder:
+        - adds new input items (midi, midi_dur, slur)
+
+        but these are same:
+        - positional encoding
+    '''
     def forward_embedding(self, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding):
         # embed tokens and positions
         x = self.embed_scale * self.embed_tokens(txt_tokens)
@@ -24,13 +36,12 @@ class FastspeechMIDIEncoder(FastspeechEncoder):
 
     def forward(self, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding):
         """
-
         :param txt_tokens: [B, T]
         :return: {
             'encoder_out': [T x B x C]
         }
         """
-        encoder_padding_mask = txt_tokens.eq(self.padding_idx).data
+        encoder_padding_mask = txt_tokens.eq(self.padding_idx).detach()
         x = self.forward_embedding(txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, H]
         x = super(FastspeechEncoder, self).forward(x, encoder_padding_mask)
         return x
@@ -47,69 +58,59 @@ class FastSpeech2MIDI(FastSpeech2):
     def __init__(self, dictionary, out_dims=None):
         super().__init__(dictionary, out_dims)
         del self.encoder
+        
         self.encoder = FS_ENCODERS[hparams['encoder_type']](hparams, self.encoder_embed_tokens, self.dictionary)
         self.midi_embed = Embedding(300, self.hidden_size, self.padding_idx)
         self.midi_dur_layer = Linear(1, self.hidden_size)
         self.is_slur_embed = Embedding(2, self.hidden_size)
+        yunmu = ['AP', 'SP'] + ALL_YUNMU 
+        yunmu.remove('ng')
+        self.vowel_tokens = [dictionary.encode(ph)[0] for ph in yunmu]
 
-    def forward(self, txt_tokens, mel2ph=None, spk_embed=None,
+    def forward(self, txt_tokens, mel2ph=None, spk_embed_id=None,
                 ref_mels=None, f0=None, uv=None, energy=None, skip_decoder=False,
                 spk_embed_dur_id=None, spk_embed_f0_id=None, infer=False, **kwargs):
-        ret = {}
+        '''
+            steps:
+            1. embedding: midi_embedding, midi_dur_embedding, slur_embedding
+            2. run self.encoder (a Transformer) using txt_tokens and embeddings
+            3. run *dur_predictor* in *add_dur* using *encoder_out*, get *ret['dur']* and *ret['mel2ph']*
+            4. the same for *pitch_predictor* and *energy_predictor*
+            5. run decoder (skipped for diffusion)
+        '''
+        midi_embedding, midi_dur_embedding, slur_embedding = Batch2Loss.insert1(
+            kwargs['pitch_midi'], kwargs.get('midi_dur', None), kwargs.get('is_slur', None),
+            self.midi_embed, self.midi_dur_layer, self.is_slur_embed
+        )
 
-        midi_embedding = self.midi_embed(kwargs['pitch_midi'])
-        midi_dur_embedding, slur_embedding = 0, 0
-        if kwargs.get('midi_dur') is not None:
-            midi_dur_embedding = self.midi_dur_layer(kwargs['midi_dur'][:, :, None])  # [B, T, 1] -> [B, T, H]
-        if kwargs.get('is_slur') is not None:
-            slur_embedding = self.is_slur_embed(kwargs['is_slur'])
-        encoder_out = self.encoder(txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, C]
+        encoder_out = Batch2Loss.module1(self.encoder, txt_tokens, midi_embedding, midi_dur_embedding, slur_embedding)  # [B, T, C]
+        
         src_nonpadding = (txt_tokens > 0).float()[:, :, None]
+        var_embed, spk_embed, spk_embed_dur, spk_embed_f0, dur_inp = Batch2Loss.insert2(
+            encoder_out, spk_embed_id, spk_embed_dur_id, spk_embed_f0_id, src_nonpadding,
+            self.spk_embed_proj if hasattr(self, 'spk_embed_proj') else None
+        )
 
-        # add ref style embed
-        # Not implemented
-        # variance encoder
-        var_embed = 0
-
-        # encoder_out_dur denotes encoder outputs for duration predictor
-        # in speech adaptation, duration predictor use old speaker embedding
-        if hparams['use_spk_embed']:
-            spk_embed_dur = spk_embed_f0 = spk_embed = self.spk_embed_proj(spk_embed)[:, None, :]
-        elif hparams['use_spk_id']:
-            spk_embed_id = spk_embed
-            if spk_embed_dur_id is None:
-                spk_embed_dur_id = spk_embed_id
-            if spk_embed_f0_id is None:
-                spk_embed_f0_id = spk_embed_id
-            spk_embed = self.spk_embed_proj(spk_embed_id)[:, None, :]
-            spk_embed_dur = spk_embed_f0 = spk_embed
-            if hparams['use_split_spk_id']:
-                spk_embed_dur = self.spk_embed_dur(spk_embed_dur_id)[:, None, :]
-                spk_embed_f0 = self.spk_embed_f0(spk_embed_f0_id)[:, None, :]
-        else:
-            spk_embed_dur = spk_embed_f0 = spk_embed = 0
-
-        # add dur
-        dur_inp = (encoder_out + var_embed + spk_embed_dur) * src_nonpadding
-
-        mel2ph = self.add_dur(dur_inp, mel2ph, txt_tokens, ret)
-
-        decoder_inp = F.pad(encoder_out, [0, 0, 1, 0])
-
-        mel2ph_ = mel2ph[..., None].repeat([1, 1, encoder_out.shape[-1]])
-        decoder_inp_origin = decoder_inp = torch.gather(decoder_inp, 1, mel2ph_)  # [B, T, H]
+        ret = {}
+        mel2ph = Batch2Loss.module2(
+            self.dur_predictor, self.length_regulator,
+            dur_inp, mel2ph, txt_tokens, self.vowel_tokens, ret, midi_dur=kwargs['midi_dur']*hparams['audio_sample_rate']/hparams['hop_size']
+        )
 
         tgt_nonpadding = (mel2ph > 0).float()[:, :, None]
+        decoder_inp, pitch_inp, pitch_inp_ph = Batch2Loss.insert3(
+            encoder_out, mel2ph, var_embed, spk_embed_f0, src_nonpadding, tgt_nonpadding
+        )
 
-        # add pitch and energy embed
-        pitch_inp = (decoder_inp_origin + var_embed + spk_embed_f0) * tgt_nonpadding
-        if hparams['use_pitch_embed']:
-            pitch_inp_ph = (encoder_out + var_embed + spk_embed_f0) * src_nonpadding
-            decoder_inp = decoder_inp + self.add_pitch(pitch_inp, f0, uv, mel2ph, ret, encoder_out=pitch_inp_ph)
-        if hparams['use_energy_embed']:
-            decoder_inp = decoder_inp + self.add_energy(pitch_inp, energy, ret)
+        pitch_embedding, energy_embedding = Batch2Loss.module3(
+            getattr(self, 'pitch_predictor', None), getattr(self, 'pitch_embed', None),
+            getattr(self, 'energy_predictor', None), getattr(self, 'energy_embed', None),
+            pitch_inp, pitch_inp_ph, f0, uv, energy, mel2ph, (not infer), ret
+        )
 
-        ret['decoder_inp'] = decoder_inp = (decoder_inp + spk_embed) * tgt_nonpadding
+        decoder_inp = Batch2Loss.insert4(
+            decoder_inp, pitch_embedding, energy_embedding, spk_embed, ret, tgt_nonpadding
+        )
 
         if skip_decoder:
             return ret

@@ -21,6 +21,13 @@ def override_config(old_config: dict, new_config: dict):
 
 
 def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, global_hparams=True):
+    '''
+        Load hparams from multiple sources:
+        1. config chain (i.e. first load base_config, then load config);
+        2. if reset == True, load from the (auto-saved) complete config file ('config.yaml')
+           which contains all settings and do not rely on base_config;
+        3. load from argument --hparams or hparams_str, as temporary modification.
+    '''
     if config == '':
         parser = argparse.ArgumentParser(description='neural music')
         parser.add_argument('--config', type=str, default='',
@@ -45,7 +52,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     loaded_config = set()
 
     def load_config(config_fn):  # deep first
-        with open(config_fn) as f:
+        with open(config_fn, encoding='utf-8') as f:
             hparams_ = yaml.safe_load(f)
         loaded_config.add(config_fn)
         if 'base_config' in hparams_:
@@ -71,7 +78,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         ckpt_config_path = f'{args_work_dir}/config.yaml'
         if os.path.exists(ckpt_config_path):
             try:
-                with open(ckpt_config_path) as f:
+                with open(ckpt_config_path, encoding='utf-8') as f:
                     saved_hparams.update(yaml.safe_load(f))
             except:
                 pass
@@ -89,6 +96,8 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     if args.hparams != "":
         for new_hparam in args.hparams.split(","):
             k, v = new_hparam.split("=")
+            if k not in hparams_:
+                hparams_[k] = eval(v)
             if v in ['True', 'False'] or type(hparams_[k]) == bool:
                 hparams_[k] = eval(v)
             else:
@@ -96,7 +105,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
 
     if args_work_dir != '' and (not os.path.exists(ckpt_config_path) or args.reset) and not args.infer:
         os.makedirs(hparams_['work_dir'], exist_ok=True)
-        with open(ckpt_config_path, 'w') as f:
+        with open(ckpt_config_path, 'w', encoding='utf-8') as f:
             yaml.safe_dump(hparams_, f)
 
     hparams_['infer'] = args.infer

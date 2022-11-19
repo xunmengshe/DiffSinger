@@ -7,9 +7,8 @@ debug: false
 save_codes:
   - configs
   - modules
-  - tasks
+  - src
   - utils
-  - usr
 
 #############
 # dataset
