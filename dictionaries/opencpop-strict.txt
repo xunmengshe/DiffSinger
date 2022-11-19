@@ -189,7 +189,6 @@ lun	l un
 luo	l uo
 lv	l v
 lve	l ve
-m	m
 ma	m a
 mai	m ai
 man	m an
@@ -209,7 +208,6 @@ miu	m iu
 mo	m o
 mou	m ou
 mu	m u
-n	n
 na	n a
 nai	n ai
 nan	n an
@@ -219,7 +217,6 @@ ne	n e
 nei	n ei
 nen	n en
 neng	n eng
-ng	n g
 ni	n i
 nian	n ian
 niang	n iang

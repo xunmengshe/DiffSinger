@@ -97,7 +97,7 @@ There are currently two preset dictionaries.
 
 #### The original Opencpop dictionary [[source](../dictionaries/opencpop.txt)]
 
-The original Opencpop dictionary, which you can find [here](http://wenet.org.cn/opencpop/resources/annotationformat/), are fully aligned with the standard pinyin format of Mandarin Chinese. We copied the dictionary from the website and removed 2 syllables that has no occurrence in the data labels (`hm` and `hng`). It has the most compatibility with the previous model weights, but may cause bad cases in pronunciations, especially in cases that the note is a slur. Thus, this dictionary is deprecated by default and remained only for backward compatibility.
+The original Opencpop dictionary, which you can find [here](http://wenet.org.cn/opencpop/resources/annotationformat/), are fully aligned with the standard pinyin format of Mandarin Chinese. We copied the dictionary from the website and removed 5 syllables that has no occurrence in the data labels (`hm`, `hng`, `m`, `n` and `ng`). It has the most compatibility with the previous model weights, but may cause bad cases in pronunciations, especially in cases that the note is a slur. Thus, this dictionary is deprecated by default and remained only for backward compatibility.
 
 Phoneme distribution of Opencpop dataset on this dictionary can be found [here](http://wenet.org.cn/opencpop/resources/statisticalinformation/).
 
