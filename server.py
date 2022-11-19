@@ -2,11 +2,16 @@
 print('Starting diffsinger server...')
 import json
 import os
+import pathlib
 import sys
 import traceback
+import utaupy
 import zmq
 
 from inference.svs.ds_e2e import DiffSingerE2EInfer
+from singer_manager import SingerManager
+
+from typing import List,Tuple
 
 notedict={
     0:"C",
@@ -22,6 +27,12 @@ notedict={
     10:"A#",
     11:"B"
 }
+
+singerManager=SingerManager()
+
+def create_file(filepath:str,mode:str="w",encoding:str="utf-8"):#创建文件夹并新建文本文件
+    os.makedirs(os.path.split(filepath)[0], exist_ok=True)
+    return open(filepath,"w")
 
 def poll_socket(socket, timetick = 100):
     poller = zmq.Poller()
@@ -54,53 +65,96 @@ def readblocks(ustfile):
     if(len(current_block_data)>=1):#返回最后一个
         yield current_block_data
 
-def acoustic(ustpath:str):
+def writelab(labpath:str,labdata:List[Tuple[float,float,str]]):
+    with create_file(labpath,"w",encoding="utf-8") as outputfile:
+        for label in labdata:
+            outputfile.write("{} {} {}\n".format(
+                int(label[0]*10000000),
+                int(label[1]*10000000),
+                label[2]))
+
+def tick2time(tick:int,tempo:float):
+    return tick/(tempo*8)
+
+def timing(input:List[str]):
+    ustpath:str=input[0]
+    plugin = utaupy.utauplugin.load(ustpath)
+    tempo=float(plugin.tempo)
+    current_tick=0
+    labdata:List[Tuple[float,float,str]]=[]
+    for note in plugin.notes:
+        note_length=int(note["Length"])
+        labdata.append((
+            tick2time(current_tick,tempo),
+            tick2time(current_tick+note_length,tempo),
+            {"R":"pau"}.get(note["Lyric"],note["Lyric"]),
+            ))
+        current_tick+=note_length
+    writelab(ustpath[:-4]+"_enutemp/timing.lab",labdata)
+    writelab(ustpath[:-4]+"_enutemp/score.lab",labdata)
+    return {
+        'path_full_timing': ustpath[:-4]+"_enutemp/timing.full", 
+        'path_mono_timing': ustpath[:-4]+"_enutemp/timing.lab"
+        }
+
+def vocoder(input:List[str]):
+    (ustpath,wavpath)=input
     #解析ust文件为diffsinger所需格式
     #参考：main.py
-    wavpath=ustpath[:-4]+".wav"
+    plugin = utaupy.utauplugin.load(ustpath)
+    tempo:float = float(plugin.tempo)
+    singerpath:str = plugin.voicedir
+    singer=singerManager.getsinger(singerpath)
 
-    tempo=120
-    project=""
-    voiceDir=""
-    cacheDir=""
-    
-    ph_seq=[]
-    note_seq=[]
-    ph_dur=[]
-    is_slur_seq=[]
+    text:List[str]=[]
+    ph_seq:List[str]=[]
+    note_seq:List[str]=[]
+    note_dur_seq:List[str]=[]
+    is_slur_seq:List[str]=[]
 
-    with open(ustpath) as ustfile:
-        for block in readblocks(ustfile):
-            if(block["name"]=="SETTING"):#音轨信息块
-                tempo=float(block["Tempo"])
-                project=block["Project"]
-                voiceDir=block["VoiceDir"]
-                cacheDir=block["CacheDir"]
-            elif(block["name"].isdigit()):#音符
-                lyric=block["Lyric"]
-                notenum=int(block["NoteNum"])
-                length=int(block["Length"])
-                if(lyric=="-"):#；连音符
-                    ph_seq.append(ph_seq[-1])
-                    note_seq.append(notedict[notenum%12]+str(notenum//12-1))
-                    ph_dur.append(str(length/(tempo*8)))
-                    is_slur_seq.append("1")
-                elif(lyric!="R"):
-                    ph_seq.append(lyric)
-                    note_seq.append(notedict[notenum%12]+str(notenum//12-1))
-                    ph_dur.append(str(length/(tempo*8)))
-                    is_slur_seq.append("0")
-    ph_seq=" ".join(ph_seq)
-    print("Phonemes:",ph_seq)
+    for note in plugin.notes:
+        lyric=note["Lyric"]
+        notenum=int(note["NoteNum"])
+        length=int(note["Length"])
+        if(lyric=="-"):#；连音符
+            ph_seq.append(ph_seq[-1])
+            note_seq.append(notedict[notenum%12]+str(notenum//12-1))
+            note_dur_seq.append(str(tick2time(length,tempo)))
+            is_slur_seq.append("1")
+        elif(lyric=="R"):
+            text.append("SP")
+            ph_seq.append("SP")
+            note_seq.append("rest")
+            note_dur_seq.append(str(tick2time(length,tempo)))
+            is_slur_seq.append("0")
+            pass
+        else:
+            text.append(lyric)
+            length_real_time=tick2time(length,tempo)
+            note_name=notedict[notenum%12]+str(notenum//12-1)
+            for phoneme in singer.phonemeDict[lyric]:
+                ph_seq.append(phoneme)
+                note_seq.append(note_name)
+                note_dur_seq.append(str(length_real_time))
+                is_slur_seq.append("0")
+    print("Phonemes:"," ".join(ph_seq))
     inp={
         "text":"",
-        "ph_seq":ph_seq,
+        "ph_seq":" ".join(ph_seq),
         "note_seq":" ".join(note_seq),
-        "ph_dur":" ".join(ph_dur),
-        "note_dur_seq":" ".join(ph_dur),
+        "ph_dur":None,
+        "note_dur_seq":" ".join(note_dur_seq),
         "is_slur_seq":" ".join(is_slur_seq),
         'input_type': 'phoneme'
     }
+    #将歌手路径以命令行参数的形式传入合成器
+    sys.argv = [
+        os.path.join(os.path.split(os.path.abspath(sys.argv[0]))[0],"inference/svs/ds_e2e.py"),
+        '--config',
+        os.path.join(singerpath,"dsconfig.yaml"),
+        '--exp_name',
+        '0814_opencpop_500k（修复无参音素）'
+    ]
     #合成
     DiffSingerE2EInfer.example_run(inp, target=wavpath)
     return {
@@ -119,7 +173,7 @@ f'{root_dir}/usr/configs/midi/e2e/opencpop/ds100_adj_rel.yaml',
 def main():
     context = zmq.Context()
     socket = context.socket(zmq.REP)
-    socket.bind('tcp://*:38442')
+    socket.bind('tcp://*:15555')
     print('Started diffsinger server')
 
     for message in poll_socket(socket):
@@ -128,10 +182,12 @@ def main():
         print('Received request: %s' % request)
         response = {}
         try:
-            #if request[0] == 'timing':
-            #    response['result'] = timing(request[1])
-            if request[0] == 'acoustic':
-                response['result'] = acoustic(request[1])
+            request_func_dict={
+                "timing":timing,
+                'vocoder':vocoder,
+            }
+            if request[0] in request_func_dict:
+                response['result'] = request_func_dict[request[0]](request[1:])
             else:
                 raise NotImplementedError('unexpected command %s' % request[0])
         except Exception as e:
