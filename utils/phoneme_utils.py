@@ -1,4 +1,5 @@
-from utils.hparams import hparams
+import argparse
+import json
 
 
 _has_cache = False
@@ -10,7 +11,9 @@ _phoneme_list: list
 
 
 def _build_dict_and_list():
+    from utils.hparams import hparams
     global _g2p_dictionary, _phoneme_list
+
     _set = set()
     with open(hparams['g2p_dictionary'], 'r', encoding='utf8') as _df:
         _lines = _df.readlines()
@@ -75,12 +78,24 @@ def opencpop_old_to_strict(phonemes: list, slurs: list) -> list:
     return new_phonemes
 
 
+def opencpop_ds_old_to_strict(ds_params):
+    ds_params['ph_seq'] = ' '.join(
+        opencpop_old_to_strict(ds_params['ph_seq'].split(), ds_params['is_slur_seq'].split()))
+
+
 if __name__ == '__main__':
-    with open('../dictionaries/transcriptions-revised.txt', 'r', encoding='utf8') as f:
-        _utterances = f.readlines()
-    utterances: list = [u.strip().split('|') for u in _utterances]
-    for u in utterances:
-        u[2] = ' '.join(opencpop_old_to_strict(u[2].split(), u[6].split()))
-    with open('../dictionaries/transcriptions-strict.txt', 'w', encoding='utf-8') as f:
-        for u in utterances:
-            print('|'.join(u), file=f)
+    parser = argparse.ArgumentParser(
+        description='Migrate ds file from old opencpop pinyin dictionary to new strict pinyin dictionary.')
+    parser.add_argument('input', type=str, help='Path to the input file')
+    parser.add_argument('output', type=str, help='Path to the output file')
+    args = parser.parse_args()
+
+    with open(args.input, 'r', encoding='utf8') as f:
+        params = json.load(f)
+    if isinstance(params, list):
+        [opencpop_ds_old_to_strict(p) for p in params]
+    else:
+        opencpop_ds_old_to_strict(params)
+
+    with open(args.output, 'w', encoding='utf8') as f:
+        json.dump(params, f, ensure_ascii=False, indent=2)

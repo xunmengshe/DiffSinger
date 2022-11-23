@@ -95,25 +95,32 @@ When doing inference, the program will read the dictionary file from the checkpo
 
 There are currently two preset dictionaries.
 
-#### The original Opencpop dictionary [[source](../dictionaries/opencpop.txt)]
+#### The original Opencpop dictionary [[source]](../dictionaries/opencpop.txt)
 
 The original Opencpop dictionary, which you can find [here](http://wenet.org.cn/opencpop/resources/annotationformat/), are fully aligned with the standard pinyin format of Mandarin Chinese. We copied the dictionary from the website and removed 5 syllables that has no occurrence in the data labels (`hm`, `hng`, `m`, `n` and `ng`). It has the most compatibility with the previous model weights, but may cause bad cases in pronunciations, especially in cases that the note is a slur. Thus, this dictionary is deprecated by default and remained only for backward compatibility.
 
 Phoneme distribution of Opencpop dataset on this dictionary can be found [here](http://wenet.org.cn/opencpop/resources/statisticalinformation/).
 
-#### The new strict pinyin dictionary [[source](../dictionaries/opencpop-strict.txt)]
+#### The new strict pinyin dictionary [[source]](../dictionaries/opencpop-strict.txt)
 
 We distinguished some different pronunciations of some phonemes, and added 4 phonemes to the original dictionary: `ir`, `i0`, `E` and `En`.
 
 Some mapping rules are changed:
 
-- `zhi`, `chi`, `shi`, `ri` are mapped to `zh ir`, `ch ir`, `sh ir`, `r ir` (distinguishes from orignal `i`)
-- `zi`, `ci`, `si` are mapped to `z i0`, `c i0`, `s i0` (distinguishes from original `i`)
-- `ye` are mapped to `y E` (distinguishes from original `e`)
-- `yan` are mapped to `y En` (distinguishes from original `an`)
+- `zhi`, `chi`, `shi`, `ri` are mapped to `zh ir`, `ch ir`, `sh ir`, `r ir` (distinguished from orignal `i`)
+- `zi`, `ci`, `si` are mapped to `z i0`, `c i0`, `s i0` (distinguished from original `i`)
+- `ye` are mapped to `y E` (distinguished from original `e`)
+- `yan` are mapped to `y En` (distinguished from original `an`)
 
 Phoneme distribution* of Opencpop dataset on this dictionary is shown below.
 
 ![img](resources/phoneme_distribution.jpg)
 
 *`AP` and `SP` are not included.
+
+To migrate `ds` file from original dictionary to this strict dictionary, run the following command:
+
+```bash
+python utils/phoneme_utils path/to/your/original.ds path/to/your/target.ds
+```
+
