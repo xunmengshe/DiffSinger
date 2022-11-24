@@ -1,4 +1,4 @@
-'''
+"""
 
     item: one piece of data
     item_name: data id
@@ -12,35 +12,14 @@
     midi: pitch as midi notes
     midi_dur: midi duration
     is_slur: keep singing upon note changes
-'''
+"""
 
-from collections import defaultdict
-from data_gen.midisinging import MidiSingingBinarizer
-import os
-import random
-from copy import deepcopy
-import pandas as pd
 import logging
-from tqdm import tqdm
-import json
-import glob
-import re
-from resemblyzer import VoiceEncoder
-import traceback
-import numpy as np
-import pretty_midi
-import librosa
-from scipy.interpolate import interp1d
-import torch
-from textgrid import TextGrid
+from copy import deepcopy
 
+from data_gen.midisinging import MidiSingingBinarizer
 from utils.hparams import hparams
-from data_gen.data_gen_utils import build_phone_encoder, get_pitch_parselmouth
-from utils.pitch_utils import f0_to_coarse
-from basics.base_binarizer import BaseBinarizer, BinarizationError
-from tts.data_gen.binarizer_zh import ZhBinarizer
-from tts.data_gen.txt_processors.zh_g2pM import ALL_YUNMU
-from src.vocoders.base_vocoder import VOCODERS
+
 
 class OpencpopBinarizer(MidiSingingBinarizer):
     def split_train_test_set(self, item_names):

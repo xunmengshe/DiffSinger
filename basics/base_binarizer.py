@@ -1,3 +1,4 @@
+import shutil
 from ast import Not
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -9,6 +10,7 @@ from resemblyzer import VoiceEncoder
 from tqdm import tqdm
 from data_gen.data_gen_utils import get_mel2ph, get_pitch_parselmouth, build_phone_encoder
 from utils.hparams import set_hparams, hparams
+from utils.phoneme_utils import build_phoneme_list
 import numpy as np
 from utils.indexed_datasets import IndexedDatasetBuilder
 
@@ -93,20 +95,17 @@ class BaseBinarizer:
         return self.spk_map[self.items[item_name]['spk_id']]
 
     def _phone_encoder(self):
-        '''
-            create 'phone_set.json' file if it doesn't exist
-        '''
-        ph_set_fn = f"{hparams['binary_data_dir']}/phone_set.json"
         ph_set = []
-        if hparams['reset_phone_dict'] or not os.path.exists(ph_set_fn):
-            self.load_ph_set(ph_set)
+        # Just for ensuring the transcriptions match the dictionary.
+        # May need refactoring in the future.
+        dict_fn = os.path.join(hparams['binary_data_dir'], 'dictionary.txt')
+        if hparams['reset_phone_dict'] or not os.path.exists(dict_fn):
+            self.load_ph_set(ph_set)  # For singing, do checking and return the correct results.
             ph_set = sorted(set(ph_set))
-            json.dump(ph_set, open(ph_set_fn, 'w', encoding='utf-8'))
-            print("| Build phone set: ", ph_set)
+            shutil.copy(hparams['g2p_dictionary'], dict_fn)
         else:
-            ph_set = json.load(open(ph_set_fn, 'r', encoding='utf-8'))
-            print("| Load phone set: ", ph_set)
-        return build_phone_encoder(hparams['binary_data_dir'])
+            ph_set = build_phoneme_list()
+        return build_phone_encoder(ph_set)
 
     def load_ph_set(self, ph_set):
         raise NotImplementedError

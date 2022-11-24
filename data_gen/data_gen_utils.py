@@ -321,10 +321,8 @@ def get_mel2ph(tg_fn, ph, mel, hparams):
     return mel2ph, dur
 
 
-def build_phone_encoder(data_dir):
-    phone_list_file = os.path.join(data_dir, 'phone_set.json')
-    phone_list = json.load(open(phone_list_file, encoding='utf-8'))
-    return TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
+def build_phone_encoder(phone_list):
+    return TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
 
 
 def is_sil_phoneme(p):

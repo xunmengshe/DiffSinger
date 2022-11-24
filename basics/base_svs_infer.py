@@ -4,13 +4,13 @@ import os
 import torch
 import numpy as np
 from src.vocoders.base_vocoder import VOCODERS
-from inference.opencpop.map import cpop_pinyin2ph_func
 
 from utils import load_ckpt
 from utils.hparams import set_hparams, hparams
 import librosa
 import glob
 import re
+from utils.phoneme_utils import build_g2p_dictionary, build_phoneme_list
 from utils.text_encoder import TokenTextEncoder
 from pypinyin import pinyin, lazy_pinyin, Style
 
@@ -40,12 +40,9 @@ class BaseSVSInfer:
         self.hparams = hparams
         self.device = device
 
-        phone_list = ["AP", "SP", "a", "ai", "an", "ang", "ao", "b", "c", "ch", "d", "e", "ei", "en", "eng", "er", "f", "g",
-                "h", "i", "ia", "ian", "iang", "iao", "ie", "in", "ing", "iong", "iu", "j", "k", "l", "m", "n", "o",
-                "ong", "ou", "p", "q", "r", "s", "sh", "t", "u", "ua", "uai", "uan", "uang", "ui", "un", "uo", "v",
-                "van", "ve", "vn", "w", "x", "y", "z", "zh"]
-        self.ph_encoder = TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
-        self.pinyin2phs = cpop_pinyin2ph_func()
+        phone_list = build_phoneme_list()
+        self.ph_encoder = TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
+        self.pinyin2phs = build_g2p_dictionary()
         self.spk_map = {'opencpop': 0}
 
         self.model = self.build_model()
@@ -60,14 +57,14 @@ class BaseSVSInfer:
 
     def forward_model(self, inp):
         raise NotImplementedError
-    
+
     def build_vocoder(self):
         if hparams['vocoder'] in VOCODERS:
             vocoder = VOCODERS[hparams['vocoder']]()
         else:
             vocoder = VOCODERS[hparams['vocoder'].split('.')[-1]]()
         return vocoder
-        
+
     def run_vocoder(self, c, **kwargs):
         y = self.vocoder.spec2wav_torch(c,**kwargs)
         return y[None]
@@ -80,7 +77,9 @@ class BaseSVSInfer:
 
         # lyric
         pinyins = lazy_pinyin(text_raw, strict=False)
-        ph_per_word_lst = [self.pinyin2phs[pinyin.strip()] for pinyin in pinyins if pinyin.strip() in self.pinyin2phs]
+        ph_per_word_lst = [' '.join(self.pinyin2phs[pinyin.strip()])
+                           for pinyin in pinyins
+                           if pinyin.strip() in self.pinyin2phs]
 
         # Note
         note_per_word_lst = [x.strip() for x in inp['notes'].split('|') if x.strip() != '']
@@ -157,11 +156,11 @@ class BaseSVSInfer:
     def example_run(cls, inp, target='infer_out/example_out.wav'):
         # settings hparams
         set_hparams(print_hparams=False)
-        
+
         # call the model
         infer_ins = cls(hparams)
         out = infer_ins.infer_once(inp)
-        
+
         # output to file
         os.makedirs(os.path.dirname(target), exist_ok=True)
         print(f'| save audio: {target}')
