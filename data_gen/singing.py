@@ -66,6 +66,17 @@ class SingingBinarizer(BaseBinarizer):
                 if ph not in phone_set or slur == 1:
                     continue
                 phoneme_map[ph] += 1
+
+        print('===== Phoneme Distribution Summary =====')
+        for i, key in enumerate(sorted(phoneme_map.keys())):
+            if i == len(phone_set) - 1:
+                end = '\n'
+            elif i % 10 == 9:
+                end = ',\n'
+            else:
+                end = ', '
+            print(f'\'{key}\': {phoneme_map[key]}', end=end)
+
         # Draw graph.
         plt.rcParams['axes.unicode_minus'] = False
         plt.figure(figsize=(int(len(phone_set) * 0.8), 10))
@@ -80,18 +91,11 @@ class SingingBinarizer(BaseBinarizer):
         plt.title('Phoneme Distribution Summary', fontsize=30)
         plt.xlabel('Phoneme', fontsize=20)
         plt.ylabel('Number of occurrences', fontsize=20)
-        plt.savefig(fname=os.path.join(hparams['binary_data_dir'], 'phoneme_distribution.jpg'),
+        filename = os.path.join(hparams['binary_data_dir'], 'phoneme_distribution.jpg')
+        plt.savefig(fname=filename,
                     bbox_inches='tight',
                     pad_inches=0.25)
-        print('===== Phoneme Distribution Summary =====')
-        for i, key in enumerate(sorted(phoneme_map.keys())):
-            if i == len(phone_set) - 1:
-                end = '\n'
-            elif i % 10 == 9:
-                end = ',\n'
-            else:
-                end = ', '
-            print(f'\'{key}\': {phoneme_map[key]}', end=end)
+        print(f'| save summary to \'{filename}\'')
 
     def load_ph_set(self, ph_set):
         # load those phones that appear in the actual data
