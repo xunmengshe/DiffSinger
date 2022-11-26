@@ -34,7 +34,7 @@ class BaseSVSInfer:
         3. *preprocess_input*:
             how to preprocess user input.
     '''
-    def __init__(self, hparams, device=None):
+    def __init__(self, hparams, device=None, load_model=True, load_vocoder=True):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.hparams = hparams
@@ -45,17 +45,19 @@ class BaseSVSInfer:
         self.pinyin2phs = build_g2p_dictionary()
         self.spk_map = {'opencpop': 0}
 
-        self.model = self.build_model()
-        self.model.eval()
-        self.model.to(self.device)
-        self.vocoder = self.build_vocoder()
-        self.vocoder.model.eval()
-        self.vocoder.model.to(self.device)
+        if load_model:
+            self.model = self.build_model()
+            self.model.eval()
+            self.model.to(self.device)
+        if load_vocoder:
+            self.vocoder = self.build_vocoder()
+            self.vocoder.model.eval()
+            self.vocoder.model.to(self.device)
 
     def build_model(self):
         raise NotImplementedError
 
-    def forward_model(self, inp):
+    def forward_model(self, inp, return_mel):
         raise NotImplementedError
 
     def build_vocoder(self):
@@ -140,15 +142,15 @@ class BaseSVSInfer:
             return None
         return ph_seq, note_lst, midi_dur_lst, is_slur
 
-    def preprocess_input(self):
+    def preprocess_input(self, inp, input_type):
         raise NotImplementedError
 
     def postprocess_output(self, output):
         return output
 
-    def infer_once(self, inp):
+    def infer_once(self, inp, return_mel=False):
         inp = self.preprocess_input(inp, input_type=inp['input_type'] if inp.get('input_type') else 'word')
-        output = self.forward_model(inp)
+        output = self.forward_model(inp, return_mel=return_mel)
         output = self.postprocess_output(output)
         return output
 

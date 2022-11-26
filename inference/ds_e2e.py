@@ -145,7 +145,7 @@ class DiffSingerE2EInfer(BaseSVSInfer):
         }
         return batch
         
-    def forward_model(self, inp):
+    def forward_model(self, inp, return_mel=False):
         sample = self.input_to_batch(inp)
         txt_tokens = sample['txt_tokens']  # [B, T_t]
         spk_id = sample.get('spk_ids')
@@ -158,12 +158,15 @@ class DiffSingerE2EInfer(BaseSVSInfer):
                 f0_pred = self.pe(mel_out)['f0_denorm_pred']  # pe predict from Pred mel
             else:
                 f0_pred = output['f0_denorm']
+            if return_mel:
+                return mel_out.cpu(), f0_pred.cpu()
             wav_out = self.run_vocoder(mel_out, f0=f0_pred)
         wav_out = wav_out.cpu().numpy()
         return wav_out[0]
 
+
 if __name__ == '__main__':
-    inp1= {
+    inp1 = {
         'text': 'SP一闪一闪亮晶晶SP满天都是小星星',
         'notes': 'rest|C4|C4|G4|G4|A4|A4|G4|rest|F4|F4|E4|E4|D4|D4|C4',
         'notes_duration': '1|0.5|0.5|0.5|0.5|0.5|0.5|0.75|0.25|0.5|0.5|0.5|0.5|0.5|0.5|0.75',
