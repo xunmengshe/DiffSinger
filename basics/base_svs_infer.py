@@ -40,12 +40,11 @@ class BaseSVSInfer:
         self.hparams = hparams
         self.device = device
 
-        phone_list = build_phoneme_list()
-        self.ph_encoder = TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
-        self.pinyin2phs = build_g2p_dictionary()
-        self.spk_map = {'opencpop': 0}
-
         if load_model:
+            phone_list = build_phoneme_list()
+            self.ph_encoder = TokenTextEncoder(vocab_list=phone_list, replace_oov=',')
+            self.pinyin2phs = build_g2p_dictionary()
+            self.spk_map = {'opencpop': 0}
             self.model = self.build_model()
             self.model.eval()
             self.model.to(self.device)
