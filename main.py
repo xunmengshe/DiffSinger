@@ -47,11 +47,7 @@ if not out:
 sys.argv = [
     f'{root_dir}/inference/ds_e2e.py' if not args.pitch else f'{root_dir}/inference/ds_cascade.py',
     '--config',
-
-    # f'{root_dir}/configs/midi/e2e/opencpop/ds100_adj_rel.yaml' if not args.pitch else f'{root_dir}/configs/midi/cascade/opencs/ds100_rel.yaml',
-    # {root_dir} 这个改成你自己模型里面的config
     f'{root_dir}/checkpoints/{exp}/config.yaml',
-
     '--exp_name',
     exp
 ]
