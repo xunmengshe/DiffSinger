@@ -1,7 +1,16 @@
+import os
+import sys
+
+
+root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ['PYTHONPATH'] = f'"{root_dir}"'
+sys.path.insert(0, root_dir)
+
+
+import argparse
 import math
 import re
 import struct
-import sys
 from functools import partial
 
 import numpy as np
@@ -856,15 +865,33 @@ def export(model_path):
 
 
 if __name__ == '__main__':
-    exp = '1110_opencpop_ds1000_m128_n512x20'
+    parser = argparse.ArgumentParser(description='Export diffusion decoder to ONNX')
+    parser.add_argument('--exp', type=str, required=True, help='Experiment to export')
+    parser.add_argument('--target', required=False, type=str, help='Path of the target ONNX model')
+    args = parser.parse_args()
+
+    cwd = os.getcwd()
+    if args.target:
+        target = os.path.join(cwd, args.target)
+    else:
+        target = None
+    os.chdir(root_dir)
+    exp = args.exp
     sys.argv = [
-        f'inference/ds_cascade.py',
+        'inference/ds_cascade.py',
         '--config',
         f'checkpoints/{exp}/config.yaml',
         '--exp_name',
         exp
     ]
-    path = f'onnx/assets/{exp}.onnx'
+
+    path = f'onnx/assets/{exp}.onnx' if not target else target
     export(path)
     fix(path, path)
-    print(f'| export \'model\' to \'{path}\'.')
+
+    os.chdir(cwd)
+    if args.target:
+        log_path = os.path.abspath(args.target)
+    else:
+        log_path = path
+    print(f'| export \'model\' to \'{log_path}\'.')
