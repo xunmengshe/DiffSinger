@@ -248,8 +248,6 @@ class PLMSNoisePredictor(nn.Module):
 class MelExtractor(nn.Module):
     def __init__(self, spec_min, spec_max, keep_bins):
         super().__init__()
-        self.register_buffer('spec_min', torch.FloatTensor(spec_min)[None, None, :keep_bins])
-        self.register_buffer('spec_max', torch.FloatTensor(spec_max)[None, None, :keep_bins])
 
     def forward(self, x):
         x = x.squeeze(1).permute(0, 2, 1)
@@ -300,6 +298,9 @@ class GaussianDiffusion(nn.Module):
         self.register_buffer('posterior_mean_coef2', to_torch(
             (1. - alphas_cumprod_prev) * np.sqrt(alphas) / (1. - alphas_cumprod)))
 
+        self.register_buffer('spec_min', torch.FloatTensor(spec_min)[None, None, :hparams['keep_bins']])
+        self.register_buffer('spec_max', torch.FloatTensor(spec_max)[None, None, :hparams['keep_bins']])
+
         self.naive_noise_predictor = NaiveNoisePredictor()
         self.plms_noise_predictor = PLMSNoisePredictor()
         self.mel_extractor = MelExtractor(spec_min=spec_min, spec_max=spec_max, keep_bins=hparams['keep_bins'])
@@ -313,6 +314,16 @@ class GaussianDiffusion(nn.Module):
         self.naive_noise_predictor.register_buffer('posterior_mean_coef1', self.posterior_mean_coef1)
         self.naive_noise_predictor.register_buffer('posterior_mean_coef2', self.posterior_mean_coef2)
         self.plms_noise_predictor.register_buffer('alphas_cumprod', self.alphas_cumprod)
+        self.mel_extractor.register_buffer('spec_min', self.spec_min)
+        self.mel_extractor.register_buffer('spec_max', self.spec_max)
+        del self.sqrt_recip_alphas_cumprod
+        del self.sqrt_recipm1_alphas_cumprod
+        del self.posterior_log_variance_clipped
+        del self.posterior_mean_coef1
+        del self.posterior_mean_coef2
+        del self.alphas_cumprod
+        del self.spec_min
+        del self.spec_max
 
     def forward(self, condition, speedup):
         device = condition.device
