@@ -56,7 +56,16 @@ Thus, the pipeline of [2.B](README-SVS-opencpop-e2e.md) can be summarized as:
 
 Click here for detailed instructions: [link](README-SVS-opencpop-e2e.md).
 
+### PART3. [Customize your phonemes](README-SVS-customize-phonemes.md) (🎉**Exclusive in this forked repository!**)
+
+In PART2, we observed many bad cases with phonemes that has multiple pronumciations, e.g. `i` in `bi`, `ci`, `chi` and `e` in `ce`, `ye`. However, the original codebase has heavy dependency on the Opencpop dataset and labels, including its phoneme systems, which bring difficulties to changing the phoneme system.
+
+In this repository, we decoupled the code from the Opencpop phoneme system and dictionary, configured all information of the phoneme system in one single file, and released a revised version of the Opencpop pinyin dictionary. This refactor also made it possible for customized phoneme systems and dictionaries, such as Japanese, Korean, etc.
+
+Click here for requirements and instructions: [link](README-SVS-customize-phonemes.md).
+
 ### FAQ
+
 Q1: Why do I need F0 in Vocoders?
 
 A1: See vocoder parts in HiFiSinger, DiffSinger or SingGAN. This is a common practice now.

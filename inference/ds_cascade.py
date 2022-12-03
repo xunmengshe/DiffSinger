@@ -160,7 +160,7 @@ class DiffSingerCascadeInfer(BaseSVSInfer):
         }
         return batch
         
-    def forward_model(self, inp):
+    def forward_model(self, inp, return_mel=False):
         sample = self.input_to_batch(inp)
         txt_tokens = sample['txt_tokens']  # [B, T_t]
         spk_id = sample.get('spk_ids')
@@ -170,6 +170,8 @@ class DiffSingerCascadeInfer(BaseSVSInfer):
                                 is_slur=sample['is_slur'], mel2ph=sample['mel2ph'], f0=sample['log2f0'])
             mel_out = output['mel_out']  # [B, T,80]
             f0_pred = output['f0_denorm']
+            if return_mel:
+                return mel_out.cpu(), f0_pred.cpu()
             wav_out = self.run_vocoder(mel_out, f0=f0_pred)
         wav_out = wav_out.cpu().numpy()
         return wav_out[0]

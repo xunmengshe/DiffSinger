@@ -27,6 +27,8 @@ parser.add_argument('--key', type=int, required=False, default=0, help='Number o
 parser.add_argument('--seed', type=int, required=False, help='Random seed of the inference')
 parser.add_argument('--speedup', type=int, required=False, default=0, help='PNDM speed-up ratio')
 parser.add_argument('--pitch', action='store_true', required=False, default=False, help='Enable manual pitch mode')
+parser.add_argument('--mel', action='store_true', required=False, default=False,
+                    help='Save intermediate mel format instead of waveform')
 args = parser.parse_args()
 
 name = os.path.basename(args.proj).split('.')[0] if not args.title else args.title
@@ -45,11 +47,7 @@ if not out:
 sys.argv = [
     f'{root_dir}/inference/ds_e2e.py' if not args.pitch else f'{root_dir}/inference/ds_cascade.py',
     '--config',
-
-    # f'{root_dir}/configs/midi/e2e/opencpop/ds100_adj_rel.yaml' if not args.pitch else f'{root_dir}/configs/midi/cascade/opencs/ds100_rel.yaml',
-    # {root_dir} 这个改成你自己模型里面的config
     f'{root_dir}/checkpoints/{exp}/config.yaml',
-
     '--exp_name',
     exp
 ]
@@ -61,6 +59,8 @@ with open(args.proj, 'r', encoding='utf-8') as f:
     params = json.load(f)
     if args.key != 0:
         params = trans_key(params, args.key)
+        if not args.title:
+            name += f'_{args.key}key'
         print(f"音调基于原音频{args.key}key")
 
 if not isinstance(params, list):
@@ -71,12 +71,19 @@ sample_rate = hparams['audio_sample_rate']
 
 infer_ins = None
 if len(params) > 0:
-    infer_ins = DiffSingerE2EInfer(hparams) if not args.pitch else DiffSingerCascadeInfer(hparams)
+    if args.pitch:
+        infer_ins = DiffSingerCascadeInfer(hparams, load_vocoder=not args.mel)
+    else:
+        infer_ins = DiffSingerE2EInfer(hparams, load_vocoder=not args.mel)
 
 
-def infer_once(path: str):
-    result = np.zeros(0)
+def infer_once(path: str, save_mel=False):
+    if save_mel:
+        result = []
+    else:
+        result = np.zeros(0)
     current_length = 0
+
     for param in params:
         if 'seed' in param:
             print(f'| set seed: {param["seed"] & 0xffff_ffff}')
@@ -89,21 +96,36 @@ def infer_once(path: str):
         else:
             torch.manual_seed(torch.seed() & 0xffff_ffff)
             torch.cuda.manual_seed_all(torch.seed() & 0xffff_ffff)
-        seg_audio = infer_ins.infer_once(param)
-        silent_length = round(param.get('offset', 0) * sample_rate) - current_length
-        if silent_length >= 0:
-            result = np.append(result, np.zeros(silent_length))
-            result = np.append(result, seg_audio)
+
+        if save_mel:
+            mel, f0 = infer_ins.infer_once(param, return_mel=True)
+            result.append({
+                'offset': param.get('offset', 0.),
+                'mel': mel,
+                'f0': f0
+            })
         else:
-            result = cross_fade(result, seg_audio, current_length + silent_length)
-        current_length = current_length + silent_length + seg_audio.shape[0]
-    print(f'| save audio: {path}')
-    save_wav(result, path, sample_rate)
+            seg_audio = infer_ins.infer_once(param)
+            silent_length = round(param.get('offset', 0) * sample_rate) - current_length
+            if silent_length >= 0:
+                result = np.append(result, np.zeros(silent_length))
+                result = np.append(result, seg_audio)
+            else:
+                result = cross_fade(result, seg_audio, current_length + silent_length)
+            current_length = current_length + silent_length + seg_audio.shape[0]
+
+    if save_mel:
+        print(f'| save mel: {path}')
+        torch.save(result, path)
+    else:
+        print(f'| save audio: {path}')
+        save_wav(result, path, sample_rate)
 
 
 os.makedirs(out, exist_ok=True)
+suffix = '.wav' if not args.mel else '.mel.pt'
 if args.num == 1:
-    infer_once(os.path.join(out, f'{name}_{args.key}key.wav'))
+    infer_once(os.path.join(out, f'{name}{suffix}'), save_mel=args.mel)
 else:
     for i in range(1, args.num + 1):
-        infer_once(os.path.join(out, f'{name}_{args.key}key-{str(i).zfill(3)}.wav'))
+        infer_once(os.path.join(out, f'{name}-{str(i).zfill(3)}{suffix}'), save_mel=args.mel)
