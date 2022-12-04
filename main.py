@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import sys
+import warnings
 
 import numpy as np
 import torch
@@ -33,13 +34,8 @@ args = parser.parse_args()
 
 name = os.path.basename(args.proj).split('.')[0] if not args.title else args.title
 exp = args.exp
-if not exp:
-    if args.pitch:
-        exp = '0909_opencpop_ds100_pitchcontrol'
-    elif os.path.exists(os.path.join(root_dir, 'checkpoints/0814_opencpop_ds_rhythm_fix')):
-        exp = '0814_opencpop_ds_rhythm_fix'
-    else:
-        exp = '0814_opencpop_500k（修复无参音素）'
+assert exp is not None, 'Default value of exp is deprecated. You must specify \'--exp\' to run inference.'
+
 out = args.out
 if not out:
     out = os.path.dirname(os.path.abspath(args.proj))
@@ -74,6 +70,12 @@ if len(params) > 0:
     if args.pitch:
         infer_ins = DiffSingerCascadeInfer(hparams, load_vocoder=not args.mel)
     else:
+        warnings.warn(
+            message='SVS MIDI-B version (implicit pitch prediction) is deprecated and '
+            'the \'--pitch\' argument will default to true and be removed in the future. '
+            'Please select or train a checkpoint of MIDI-A version (controllable pitch prediction).',
+            category=DeprecationWarning
+        )
         infer_ins = DiffSingerE2EInfer(hparams, load_vocoder=not args.mel)
 
 
