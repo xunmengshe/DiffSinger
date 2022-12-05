@@ -32,9 +32,29 @@ parser.add_argument('--mel', action='store_true', required=False, default=False,
                     help='Save intermediate mel format instead of waveform')
 args = parser.parse_args()
 
+# Deprecation for --pitch
+warnings.filterwarnings(action='default')
+if args.pitch is not None:
+    warnings.warn(
+        message='The argument \'--pitch\' is deprecated and will be removed in the future. '
+                'The program now automatically detects which mode to use.',
+        category=DeprecationWarning,
+    )
+    warnings.filterwarnings(action='default')
+
 name = os.path.basename(args.proj).split('.')[0] if not args.title else args.title
 exp = args.exp
 assert exp is not None, 'Default value of exp is deprecated. You must specify \'--exp\' to run inference.'
+if not os.path.exists(f'{root_dir}/checkpoints/{exp}'):
+    for ckpt in os.listdir(os.path.join(root_dir, 'checkpoints')):
+        if ckpt.startswith(exp):
+            print(f'| match ckpt by suffix: {ckpt}')
+            exp = ckpt
+            break
+    assert os.path.exists(f'{root_dir}/checkpoints/{exp}'), 'There are no matching exp in \'checkpoints\' folder. ' \
+                                                            'Please specify \'--exp\' as the folder name or prefix.'
+else:
+    print(f'| found ckpt by name: {exp}')
 
 out = args.out
 if not out:
@@ -67,15 +87,15 @@ sample_rate = hparams['audio_sample_rate']
 
 infer_ins = None
 if len(params) > 0:
-    if args.pitch:
+    if hparams['use_pitch_embed']:
         infer_ins = DiffSingerCascadeInfer(hparams, load_vocoder=not args.mel)
     else:
         warnings.warn(
-            message='SVS MIDI-B version (implicit pitch prediction) is deprecated and '
-            'the \'--pitch\' argument will default to true and be removed in the future. '
-            'Please select or train a checkpoint of MIDI-A version (controllable pitch prediction).',
+            message='SVS MIDI-B version (implicit pitch prediction) is deprecated. '
+            'Please select or train a model of MIDI-A version (controllable pitch prediction).',
             category=DeprecationWarning
         )
+        warnings.filterwarnings(action='default')
         infer_ins = DiffSingerE2EInfer(hparams, load_vocoder=not args.mel)
 
 
