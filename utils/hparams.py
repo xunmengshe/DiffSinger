@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import warnings
 
 import yaml
 
@@ -53,7 +54,24 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     config_chains = []
     loaded_config = set()
 
+    warned_old_config = False
+
     def load_config(config_fn):  # deep first
+        # Backward compatibility with old checkpoints
+        if config_fn.startswith('usr/configs/'):
+            nonlocal warned_old_config
+            if not warned_old_config:
+                warnings.warn(
+                    message='You are using a ckpt trained from an old branch of DiffSinger repository, '
+                            'which refers to a config file that has been moved to another place. '
+                            'The config file path is automatically corrected, but please migrate to '
+                            'new checkpoints trained with this refactor branch as soon as possible.',
+                    category=ResourceWarning
+                )
+                warnings.filterwarnings(action='default')
+                warned_old_config = True
+            config_fn = config_fn[4:]
+
         with open(config_fn, encoding='utf-8') as f:
             hparams_ = yaml.safe_load(f)
         loaded_config.add(config_fn)
