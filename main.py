@@ -56,6 +56,8 @@ if not os.path.exists(f'{root_dir}/checkpoints/{exp}'):
 else:
     print(f'| found ckpt by name: {exp}')
 
+
+
 out = args.out
 if not out:
     out = os.path.dirname(os.path.abspath(args.proj))
@@ -84,6 +86,11 @@ if not isinstance(params, list):
 
 set_hparams(print_hparams=False)
 sample_rate = hparams['audio_sample_rate']
+
+# Check for vocoder path
+assert os.path.exists(os.path.join(root_dir, hparams['vocoder_ckpt'])), \
+    f'Vocoder ckpt \'{hparams["vocoder_ckpt"]}\' not found. ' \
+    f'Please put it to the checkpoints directory to run inference.'
 
 infer_ins = None
 if len(params) > 0:

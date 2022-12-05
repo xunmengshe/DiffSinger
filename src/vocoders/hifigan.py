@@ -48,17 +48,11 @@ class HifiGAN(PWG):
     def __init__(self):
         base_dir = hparams['vocoder_ckpt']
         config_path = f'{base_dir}/config.yaml'
-        if os.path.exists(config_path):
-            file_path = sorted(glob.glob(f'{base_dir}/model_ckpt_steps_*.*'), key=
-            lambda x: int(re.findall(f'{base_dir}/model_ckpt_steps_(\d+).*', x.replace('\\','/'))[0]))[-1]
-            print('| load HifiGAN: ', file_path)
-            self.model, self.config, self.device = load_model(config_path=config_path, file_path=file_path)
-        else:
-            config_path = f'{base_dir}/config.json'
-            ckpt = f'{base_dir}/generator_v1'
-            if os.path.exists(config_path):
-                self.model, self.config, self.device = load_model(config_path=config_path, file_path=file_path)
-    
+        file_path = sorted(glob.glob(f'{base_dir}/model_ckpt_steps_*.*'), key=
+        lambda x: int(re.findall(f'{base_dir}/model_ckpt_steps_(\d+).*', x.replace('\\','/'))[0]))[-1]
+        print('| load HifiGAN: ', file_path)
+        self.model, self.config, self.device = load_model(config_path=config_path, file_path=file_path)
+
     def spec2wav_torch(self, mel, **kwargs):
         if self.config['audio_sample_rate'] != hparams['audio_sample_rate']:
             print('Mismatch parameters: hparams[\'audio_sample_rate\']=',hparams['audio_sample_rate'],'!=',self.config['audio_sample_rate'],'(vocoder)')
@@ -82,7 +76,7 @@ class HifiGAN(PWG):
             else:
                 y = self.model(c).view(-1)
             return y
-    
+
     def spec2wav(self, mel, **kwargs):
         if self.config['audio_sample_rate'] != hparams['audio_sample_rate']:
             print('Mismatch parameters: hparams[\'audio_sample_rate\']=',hparams['audio_sample_rate'],'!=',self.config['audio_sample_rate'],'(vocoder)')
