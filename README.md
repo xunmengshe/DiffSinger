@@ -7,6 +7,19 @@ This is a cleaner version of Diffsinger, which provides:
 - **(new) Much condensed version of the preprocessing, training, and inference pipeline**. The preprocessing pipeline is at 'preprocessing/opencpop.py', the training pipeline is at 'training/diffsinger.py', the inference pipeline is at 'inference/ds_cascade.py' or 'inference/ds_e2e.py'.
 
 Getting Started:
+
+0. Installing
+
+```bash
+# Install PyTorch manually (1.8.2 LTS recommended)
+# See instructions at https://pytorch.org/get-started/locally/
+# Below is an example for CUDA 11.1
+pip3 install torch==1.8.2 torchvision==0.9.2 torchaudio==0.8.2 --extra-index-url https://download.pytorch.org/whl/lts/1.8/cu111
+
+# Install other requirements
+pip install -r requirements.txt
+```
+
 1. Preprocessing
 ```sh
 export PYTHONPATH=.
@@ -56,7 +69,7 @@ This repository is the official PyTorch implementation of our AAAI-2022 [paper](
  - Jan.29, 2022: support MIDI-A-version SVS.
  - Jan.13, 2022: support SVS, release PopCS dataset.
  - Dec.19, 2021: support TTS. [HuggingFace🤗 TTS](https://huggingface.co/spaces/NATSpeech/DiffSpeech)
- 
+
 :rocket: **News**: 
  - Feb.24, 2022: Our new work, NeuralSVB was accepted by ACL-2022 [![arXiv](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/abs/2202.13277). [Demo Page](https://neuralsvb.github.io).
  - Dec.01, 2021: DiffSinger was accepted by AAAI-2022.
