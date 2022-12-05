@@ -20,12 +20,16 @@ CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_ad
 ```sh
 CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_adj_rel.yaml --exp_name $MY_DS_EXP_NAME --reset --infer
 ```
+Easy inference with Google Colab:
+
+Version 1: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kfmZ6Y018c5trSwQAbhdQtZ7Il8W_4BU)
+
+Version 2: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1nIP6qAMrvk6smx2JY929jxI9aNtqwV2V)
 
 # DiffSinger: Singing Voice Synthesis via Shallow Diffusion Mechanism
 [![arXiv](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/abs/2105.02446)
 [![GitHub Stars](https://img.shields.io/github/stars/MoonInTheRiver/DiffSinger?style=social)](https://github.com/MoonInTheRiver/DiffSinger)
 [![downloads](https://img.shields.io/github/downloads/MoonInTheRiver/DiffSinger/total.svg)](https://github.com/MoonInTheRiver/DiffSinger/releases)
- | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kfmZ6Y018c5trSwQAbhdQtZ7Il8W_4BU)
  | [Interactive🤗 TTS](https://huggingface.co/spaces/NATSpeech/DiffSpeech)
  | [Interactive🤗 SVS](https://huggingface.co/spaces/Silentlin/DiffSinger)
 
