@@ -27,7 +27,8 @@ parser.add_argument('--num', type=int, required=False, default=1, help='Number o
 parser.add_argument('--key', type=int, required=False, default=0, help='Number of key')
 parser.add_argument('--seed', type=int, required=False, help='Random seed of the inference')
 parser.add_argument('--speedup', type=int, required=False, default=0, help='PNDM speed-up ratio')
-parser.add_argument('--pitch', action='store_true', required=False, default=False, help='Enable manual pitch mode')
+parser.add_argument('--pitch', action='store_true', required=False, default=None, help='Enable manual pitch mode')
+parser.add_argument('--forced_automatic_pitch_mode', action='store_true', required=False, default=False)
 parser.add_argument('--mel', action='store_true', required=False, default=False,
                     help='Save intermediate mel format instead of waveform')
 args = parser.parse_args()
@@ -55,7 +56,6 @@ if not os.path.exists(f'{root_dir}/checkpoints/{exp}'):
                                                             'Please specify \'--exp\' as the folder name or prefix.'
 else:
     print(f'| found ckpt by name: {exp}')
-
 
 
 out = args.out
@@ -114,6 +114,23 @@ def infer_once(path: str, save_mel=False):
     current_length = 0
 
     for param in params:
+        # Ban automatic pitch mode by default
+        param_have_f0 = 'f0_seq' in param and param['f0_seq']
+        if not param_have_f0:
+            if not args.forced_automatic_pitch_mode:
+                assert param_have_f0, 'You are using automatic pitch mode which may not produce satisfactory ' \
+                                      'results. When you see this message, it is very likely that you forgot to' \
+                                      'freeze the f0 sequence into the input file, and this error is to inform' \
+                                      'you that a double-check should be applied. If you do want to test out the' \
+                                      'automatic pitch mode, please force it on manually.'
+            warnings.warn(
+                message='You are using forced automatic pitch mode. As this mode is only for testing purpose, '
+                        'please note that you must know clearly what you are doing, and be aware that the result '
+                        'may not be satisfactory.',
+                category=UserWarning
+            )
+            param['f0_seq'] = None
+
         if 'seed' in param:
             print(f'| set seed: {param["seed"] & 0xffff_ffff}')
             torch.manual_seed(param["seed"] & 0xffff_ffff)
