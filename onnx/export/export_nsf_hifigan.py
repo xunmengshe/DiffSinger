@@ -3,18 +3,18 @@ import os
 import sys
 
 import numpy as np
-
+import onnx
+import onnxsim
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
-from torch.nn import Conv1d, ConvTranspose1d
+from torch.nn import Conv1d, ConvTranspose1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm
 
 from modules.nsf_hifigan.env import AttrDict
 from modules.nsf_hifigan.models import ResBlock1, ResBlock2
 from modules.nsf_hifigan.utils import init_weights
 from utils.hparams import set_hparams, hparams
-
 
 LRELU_SLOPE = 0.1
 
@@ -37,8 +37,7 @@ class SineGen(torch.nn.Module):
 
     def __init__(self, samp_rate, harmonic_num=0,
                  sine_amp=0.1, noise_std=0.003,
-                 voiced_threshold=0,
-                 flag_for_pulse=False):
+                 voiced_threshold=0):
         super(SineGen, self).__init__()
         self.sine_amp = sine_amp
         self.noise_std = noise_std
@@ -46,16 +45,24 @@ class SineGen(torch.nn.Module):
         self.dim = self.harmonic_num + 1
         self.sampling_rate = samp_rate
         self.voiced_threshold = voiced_threshold
-        self.flag_for_pulse = flag_for_pulse
+        self.diff = Conv2d(
+            in_channels=1,
+            out_channels=1,
+            kernel_size=(2, 1),
+            stride=(1, 1),
+            padding=0,
+            dilation=(1, 1),
+            bias=False
+        )
+        self.diff.weight = nn.Parameter(torch.FloatTensor([[[[-1.], [1.]]]]))
 
     def _f02sine(self, f0_values):
         """ f0_values: (batchsize, length, dim)
             where dim indicates fundamental tone and overtones
         """
-        # convert to F0 in rad. The interger part n can be ignored
+        # convert to F0 in rad. The integer part n can be ignored
         # because 2 * np.pi * n doesn't affect phase
-        rad_values = (f0_values / self.sampling_rate)
-        rad_values -= torch.floor(rad_values)
+        rad_values = (f0_values / self.sampling_rate).fmod(1.)
 
         # initial phase noise (no noise for fundamental component)
         rand_ini = torch.rand(1, self.dim, device=f0_values.device)
@@ -68,12 +75,12 @@ class SineGen(torch.nn.Module):
         # it is necessary to add -1 whenever \sum_k=1^n rad_value_k > 1.
         # Buffer tmp_over_one_idx indicates the time step to add -1.
         # This will not change F0 of sine because (x-1) * 2*pi = x * 2*pi
-        tmp_over_one = torch.cumsum(rad_values, 1)
-        tmp_over_one -= torch.floor(tmp_over_one)
-        tmp_over_one_idx = (tmp_over_one[:, 1:, :] - tmp_over_one[:, :-1, :]) < 0
-        cumsum_shift = torch.cat((torch.zeros((1, 1, self.dim)).to(f0_values.device), tmp_over_one_idx * -1.0), dim=1)
+        tmp_over_one = torch.cumsum(rad_values, dim=1).fmod(1.)
 
-        sines = torch.sin(torch.cumsum(rad_values + cumsum_shift, dim=1) * (2 * np.pi))
+        diff = self.diff(tmp_over_one.unsqueeze(1)).squeeze(1)  # Equivalent to torch.diff, but able to export ONNX
+        cumsum_shift = (diff < 0).float()
+        cumsum_shift = torch.cat((torch.zeros((1, 1, self.dim)).to(f0_values.device), cumsum_shift), dim=1)
+        sines = torch.sin(torch.cumsum(rad_values - cumsum_shift, dim=1) * (2 * np.pi))
         return sines
 
     def forward(self, f0):
@@ -91,7 +98,7 @@ class SineGen(torch.nn.Module):
             sine_waves = self._f02sine(fn) * self.sine_amp
 
             # generate uv signal
-            uv = (f0 > self.voiced_threshold).type(torch.float32)
+            uv = (f0 > self.voiced_threshold).float()
 
             # noise: for unvoiced should be similar to sine_amp
             #        std = self.sine_amp/3 -> max value ~ self.sine_amp
@@ -180,6 +187,7 @@ class Generator(torch.nn.Module):
             else:
                 self.noise_convs.append(Conv1d(1, c_cur, kernel_size=1))
         self.resblocks = nn.ModuleList()
+        ch = None
         for i in range(len(self.ups)):
             ch = h.upsample_initial_channel // (2 ** (i + 1))
             for j, (k, d) in enumerate(zip(h.resblock_kernel_sizes, h.resblock_dilation_sizes)):
@@ -202,24 +210,44 @@ class Generator(torch.nn.Module):
             x_source = self.noise_convs[i](har_source)
 
             x = x + x_source
-            xs = torch.zeros_like(x)
+            xs = None
             for j in range(self.num_kernels):
-                xs += self.resblocks[i * self.num_kernels + j](x)
+                if xs is None:
+                    xs = self.resblocks[i * self.num_kernels + j](x)
+                else:
+                    xs += self.resblocks[i * self.num_kernels + j](x)
             x = xs / self.num_kernels
         x = functional.leaky_relu(x)
         x = self.conv_post(x)
         x = torch.tanh(x)
 
+        x = x.squeeze(1)
         return x
 
     def remove_weight_norm(self):
         print('Removing weight norm...')
-        for l in self.ups:
-            remove_weight_norm(l)
-        for l in self.resblocks:
-            l.remove_weight_norm()
+        for up in self.ups:
+            remove_weight_norm(up)
+        for block in self.resblocks:
+            block.remove_weight_norm()
         remove_weight_norm(self.conv_pre)
         remove_weight_norm(self.conv_post)
+
+
+class NsfHiFiGAN(torch.nn.Module):
+    def __init__(self, device=None):
+        super().__init__()
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = device
+        model_path = hparams['vocoder_ckpt']
+        self.generator, self.hparams = load_model(model_path, device)
+        print(f'| load \'NSF-HiFiGAN\' from \'{model_path}\'.')
+
+    def forward(self, mel: torch.Tensor, f0: torch.Tensor):
+        mel = mel.transpose(2, 1) * 2.30259
+        wav = self.generator.forward(mel, f0)
+        return wav
 
 
 def load_model(model_path, device):
@@ -233,50 +261,53 @@ def load_model(model_path, device):
     generator = Generator(h).to(device)
 
     cp_dict = torch.load(model_path)
-    generator.load_state_dict(cp_dict['generator'])
+    generator.load_state_dict(cp_dict['generator'], strict=False)
     generator.eval()
     generator.remove_weight_norm()
     del cp_dict
     return generator, h
 
 
-class NsfHiFiGAN(torch.nn.Module):
-    def __init__(self, device=None):
-        super().__init__()
-        if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.device = device
-        self.generator, self.hparams = load_model(hparams['vocoder_ckpt'], device)
+def simplify(src, target):
+    model = onnx.load(src)
 
-    def forward(self, mel: torch.Tensor, f0: torch.Tensor):
-        mel = mel.unsqueeze(0).transpose(2, 1) * 2.30259
-        f0 = f0.unsqueeze(0)
-        wav = self.generator.forward(mel, f0).view(-1)
-        return wav
+    in_dims = model.graph.input[0].type.tensor_type.shape.dim
+    outputs = model.graph.output
+    new_output = onnx.helper.make_value_info(
+        name=outputs[0].name,
+        type_proto=onnx.helper.make_tensor_type_proto(
+            elem_type=onnx.TensorProto.FLOAT,
+            shape=(in_dims[0].dim_value, 'n_samples')
+        )
+    )
+    outputs.remove(outputs[0])
+    outputs.insert(0, new_output)
+    print(f'| annotate output: \'{model.graph.output[0].name}\'')
+
+    print('Running ONNX simplifier...')
+    model, check = onnxsim.simplify(model, include_subgraph=True)
+    assert check, 'Simplified ONNX model could not be validated'
+
+    onnx.save(model, target)
+    print('Graph simplified.')
 
 
-def main():
-    sys.argv = [
-        'inference/svs/ds_e2e.py',
-        '--config',
-        'configs/midi/cascade/opencs/test.yaml',
-    ]
-
-    set_hparams(print_hparams=True)
-    device = 'cuda' if torch.cuda.is_available() else 'gpu'
+def export(model_path):
+    set_hparams(print_hparams=False)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     vocoder = NsfHiFiGAN(device)
     n_frames = 10
 
     with torch.no_grad():
-        mel = torch.rand(n_frames, 128).to(device)
-        f0 = torch.rand((n_frames,)).to(device) * 880.
+        mel = torch.rand((1, n_frames, 128), device=device)
+        f0 = torch.rand((1, n_frames), device=device)
         torch.onnx.export(
             vocoder,
             (
                 mel,
                 f0
             ),
-            'onnx/assets/nsf_hifigan_test.onnx',
+            model_path,
             input_names=[
                 'mel',
                 'f0'
@@ -286,15 +317,24 @@ def main():
             ],
             dynamic_axes={
                 'mel': {
-                    0: 'n_frames',
+                    1: 'n_frames',
                 },
                 'f0': {
-                    0: 'n_frames'
+                    1: 'n_frames'
                 }
             },
             opset_version=11
         )
+        print('PyTorch ONNX export finished.')
 
 
 if __name__ == '__main__':
-    main()
+    sys.argv = [
+        'inference/ds_e2e.py',
+        '--config',
+        'configs/midi/cascade/opencs/test.yaml',
+    ]
+    path = 'onnx/assets/nsf_hifigan.onnx'
+    export(path)
+    simplify(path, path)
+    print(f'| export \'NSF-HiFiGAN\' to \'{path}\'.')
