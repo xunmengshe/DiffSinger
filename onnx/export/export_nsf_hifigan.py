@@ -330,7 +330,7 @@ def export(model_path):
 
 if __name__ == '__main__':
     sys.argv = [
-        'inference/svs/ds_e2e.py',
+        'inference/ds_e2e.py',
         '--config',
         'configs/midi/cascade/opencs/test.yaml',
     ]
