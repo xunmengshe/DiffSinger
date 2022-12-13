@@ -13,6 +13,7 @@ from inference.ds_cascade import DiffSingerCascadeInfer
 from inference.ds_e2e import DiffSingerE2EInfer
 from utils.audio import save_wav
 from utils.hparams import set_hparams, hparams
+from utils.slur_utils import merge_slurs
 
 sys.path.insert(0, '/')
 root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -143,6 +144,8 @@ def infer_once(path: str, save_mel=False):
             torch.manual_seed(torch.seed() & 0xffff_ffff)
             torch.cuda.manual_seed_all(torch.seed() & 0xffff_ffff)
 
+        if not hparams.get('use_midi', False):
+            merge_slurs(param)
         if save_mel:
             mel, f0 = infer_ins.infer_once(param, return_mel=True)
             result.append({
