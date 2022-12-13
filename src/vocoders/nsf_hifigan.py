@@ -1,9 +1,11 @@
 import os
+
 import torch
-from modules.nsf_hifigan.models import load_model, Generator
+
+from modules.nsf_hifigan.models import load_model
 from modules.nsf_hifigan.nvSTFT import load_wav_to_torch, STFT
-from utils.hparams import hparams
 from src.vocoders.base_vocoder import BaseVocoder, register_vocoder
+from utils.hparams import hparams
 
 
 @register_vocoder
@@ -13,11 +15,9 @@ class NsfHifiGAN(BaseVocoder):
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.device = device
         model_path = hparams['vocoder_ckpt']
-        if os.path.exists(model_path):
-            print('| Load HifiGAN: ', model_path)
-            self.model, self.h = load_model(model_path, device=self.device)
-        else:
-            print('Error: HifiGAN model file is not found!')
+        assert os.path.exists(model_path), 'HifiGAN model file is not found!'
+        print('| Load HifiGAN: ', model_path)
+        self.model, self.h = load_model(model_path, device=self.device)
 
     def spec2wav_torch(self, mel, **kwargs):  # mel: [B, T, bins]
         if self.h.sampling_rate != hparams['audio_sample_rate']:
