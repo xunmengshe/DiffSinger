@@ -23,15 +23,15 @@ pip install -r requirements.txt
 1. Preprocessing
 ```sh
 export PYTHONPATH=.
-CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config configs/midi/cascade/opencs/aux_rel.yaml
+CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config configs/midi/cascade/opencs/ds1000.yaml
 ```
 2. Training
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_adj_rel.yaml --exp_name $MY_DS_EXP_NAME --reset  
+CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/cascade/opencs/ds1000.yaml --exp_name $MY_DS_EXP_NAME --reset  
 ```
 3. Inference
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_adj_rel.yaml --exp_name $MY_DS_EXP_NAME --reset --infer
+CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/cascade/opencs/ds1000.yaml --exp_name $MY_DS_EXP_NAME --reset --infer
 ```
 Easy inference with Google Colab:
 
