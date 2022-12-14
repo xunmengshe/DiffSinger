@@ -64,7 +64,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
             if not warned_old_config:
                 warnings.warn(
                     message='You are using a config file from an old branch of DiffSinger repository, '
-                            'which refers to a config file that has been moved to another place. '
+                            'which refers to configs that have been moved or renamed in this branch. '
                             'The config file path is automatically corrected, but please migrate to '
                             'new checkpoints trained with this refactor branch as soon as possible.',
                     category=ResourceWarning
