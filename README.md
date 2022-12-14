@@ -6,9 +6,9 @@ This is a cleaner version of Diffsinger, which provides:
 - better file structre: tts-related files are filtered out into the "tts/" folder, as they are not used in DiffSinger.
 - **(new) Much condensed version of the preprocessing, training, and inference pipeline**. The preprocessing pipeline is at 'preprocessing/opencpop.py', the training pipeline is at 'training/diffsinger.py', the inference pipeline is at 'inference/ds_cascade.py' or 'inference/ds_e2e.py'.
 
-## Getting Started:
+## Getting Started
 
-### 0. Installing
+### 0. Installation
 
 ```bash
 # Install PyTorch manually (1.8.2 LTS recommended)
