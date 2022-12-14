@@ -128,6 +128,7 @@ def infer_once(path: str, save_mel=False):
                         'may not be satisfactory.',
                 category=UserWarning
             )
+            warnings.filterwarnings(action='default')
             param['f0_seq'] = None
 
         if 'seed' in param:
