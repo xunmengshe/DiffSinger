@@ -67,7 +67,8 @@ sys.argv = [
     '--config',
     f'{root_dir}/checkpoints/{exp}/config.yaml',
     '--exp_name',
-    exp
+    exp,
+    '--infer'
 ]
 
 if args.speedup > 0:

@@ -24,13 +24,13 @@ def override_config(old_config: dict, new_config: dict):
 
 
 def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, global_hparams=True):
-    '''
+    """
         Load hparams from multiple sources:
         1. config chain (i.e. first load base_config, then load config);
         2. if reset == True, load from the (auto-saved) complete config file ('config.yaml')
            which contains all settings and do not rely on base_config;
         3. load from argument --hparams or hparams_str, as temporary modification.
-    '''
+    """
     if config == '':
         parser = argparse.ArgumentParser(description='neural music')
         parser.add_argument('--config', type=str, default='',
@@ -56,7 +56,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
 
     warned_old_config = False
 
-    def load_config(config_fn):  # deep first
+    def load_config(config_fn, recursive=True):  # deep first
         # Backward compatibility with old checkpoints
         if config_fn.startswith('usr/configs/'):
             nonlocal warned_old_config
@@ -75,7 +75,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         with open(config_fn, encoding='utf-8') as f:
             hparams_ = yaml.safe_load(f)
         loaded_config.add(config_fn)
-        if 'base_config' in hparams_:
+        if recursive and 'base_config' in hparams_:
             ret_hparams = {}
             if not isinstance(hparams_['base_config'], list):
                 hparams_['base_config'] = [hparams_['base_config']]
@@ -94,21 +94,17 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     global hparams
     assert args.config != '' or args_work_dir != ''
     saved_hparams = {}
-    if args_work_dir != 'checkpoints/':
-        ckpt_config_path = f'{args_work_dir}/config.yaml'
-        if os.path.exists(ckpt_config_path):
-            try:
-                with open(ckpt_config_path, encoding='utf-8') as f:
-                    saved_hparams.update(yaml.safe_load(f))
-            except:
-                pass
-        if args.config == '':
-            args.config = ckpt_config_path
+    ckpt_config_path = f'{args_work_dir}/config.yaml'
+    if os.path.exists(ckpt_config_path):
+        with open(ckpt_config_path, encoding='utf-8') as f:
+            saved_hparams.update(yaml.safe_load(f))
+    if args.config == '':
+        args.config = ckpt_config_path
 
     hparams_ = {}
 
-    hparams_.update(load_config(args.config))
-    
+    hparams_.update(load_config(args.config, not args.infer))
+
     if not args.reset:
         hparams_.update(saved_hparams)
     hparams_['work_dir'] = args_work_dir
@@ -130,7 +126,9 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     if args_work_dir != '' and (not os.path.exists(ckpt_config_path) or args.reset) and not args.infer:
         os.makedirs(hparams_['work_dir'], exist_ok=True)
         with open(ckpt_config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(hparams_, f)
+            hparams_non_recursive = hparams_.copy()
+            hparams_non_recursive['base_config'] = []
+            yaml.safe_dump(hparams_non_recursive, f)
         if hparams_.get('reset_phone_dict') or not os.path.exists(ckpt_dictionary):
             shutil.copy(dictionary, ckpt_dictionary)
 
