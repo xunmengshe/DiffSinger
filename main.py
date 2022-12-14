@@ -115,12 +115,12 @@ def infer_once(path: str, save_mel=False):
     for param in params:
         # Ban automatic pitch mode by default
         param_have_f0 = 'f0_seq' in param and param['f0_seq']
-        if not param_have_f0:
+        if hparams['use_pitch_embed'] and not param_have_f0:
             if not args.forced_automatic_pitch_mode:
                 assert param_have_f0, 'You are using automatic pitch mode which may not produce satisfactory ' \
-                                      'results. When you see this message, it is very likely that you forgot to' \
-                                      'freeze the f0 sequence into the input file, and this error is to inform' \
-                                      'you that a double-check should be applied. If you do want to test out the' \
+                                      'results. When you see this message, it is very likely that you forgot to ' \
+                                      'freeze the f0 sequence into the input file, and this error is to inform ' \
+                                      'you that a double-check should be applied. If you do want to test out the ' \
                                       'automatic pitch mode, please force it on manually.'
             warnings.warn(
                 message='You are using forced automatic pitch mode. As this mode is only for testing purpose, '
