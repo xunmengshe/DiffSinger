@@ -46,6 +46,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     else:
         args = Args(config=config, exp_name=exp_name, hparams=hparams_str,
                     infer=False, validate=False, reset=False, debug=False)
+
     args_work_dir = ''
     if args.exp_name != '':
         args.work_dir = args.exp_name
@@ -56,13 +57,13 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
 
     warned_old_config = False
 
-    def load_config(config_fn, recursive=True):  # deep first
+    def load_config(config_fn):  # deep first
         # Backward compatibility with old checkpoints
         if config_fn.startswith('usr/configs/'):
             nonlocal warned_old_config
             if not warned_old_config:
                 warnings.warn(
-                    message='You are using a ckpt trained from an old branch of DiffSinger repository, '
+                    message='You are using a config file from an old branch of DiffSinger repository, '
                             'which refers to a config file that has been moved to another place. '
                             'The config file path is automatically corrected, but please migrate to '
                             'new checkpoints trained with this refactor branch as soon as possible.',
@@ -75,7 +76,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         with open(config_fn, encoding='utf-8') as f:
             hparams_ = yaml.safe_load(f)
         loaded_config.add(config_fn)
-        if recursive and 'base_config' in hparams_:
+        if 'base_config' in hparams_:
             ret_hparams = {}
             if not isinstance(hparams_['base_config'], list):
                 hparams_['base_config'] = [hparams_['base_config']]
@@ -92,18 +93,16 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         return ret_hparams
 
     global hparams
-    assert args.config != '' or args_work_dir != ''
+    assert args.config != '' or args_work_dir != '', 'Either config or exp name should be specified.'
     saved_hparams = {}
     ckpt_config_path = f'{args_work_dir}/config.yaml'
     if os.path.exists(ckpt_config_path):
         with open(ckpt_config_path, encoding='utf-8') as f:
             saved_hparams.update(yaml.safe_load(f))
-    if args.config == '':
-        args.config = ckpt_config_path
 
     hparams_ = {}
-
-    hparams_.update(load_config(args.config, not args.infer))
+    if args.config != '':
+        hparams_.update(load_config(args.config))
 
     if not args.reset:
         hparams_.update(saved_hparams)

@@ -64,8 +64,6 @@ if not out:
 
 sys.argv = [
     f'{root_dir}/inference/ds_e2e.py' if not args.pitch else f'{root_dir}/inference/ds_cascade.py',
-    '--config',
-    f'{root_dir}/checkpoints/{exp}/config.yaml',
     '--exp_name',
     exp,
     '--infer'
@@ -85,7 +83,7 @@ with open(args.proj, 'r', encoding='utf-8') as f:
 if not isinstance(params, list):
     params = [params]
 
-set_hparams(print_hparams=False)
+set_hparams(print_hparams=True)
 sample_rate = hparams['audio_sample_rate']
 
 # Check for vocoder path

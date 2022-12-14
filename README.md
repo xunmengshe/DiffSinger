@@ -6,9 +6,9 @@ This is a cleaner version of Diffsinger, which provides:
 - better file structre: tts-related files are filtered out into the "tts/" folder, as they are not used in DiffSinger.
 - **(new) Much condensed version of the preprocessing, training, and inference pipeline**. The preprocessing pipeline is at 'preprocessing/opencpop.py', the training pipeline is at 'training/diffsinger.py', the inference pipeline is at 'inference/ds_cascade.py' or 'inference/ds_e2e.py'.
 
-Getting Started:
+## Getting Started:
 
-0. Installing
+### 0. Installing
 
 ```bash
 # Install PyTorch manually (1.8.2 LTS recommended)
@@ -20,18 +20,21 @@ pip3 install torch==1.8.2 torchvision==0.9.2 torchaudio==0.8.2 --extra-index-url
 pip install -r requirements.txt
 ```
 
-1. Preprocessing
+### 1. Preprocessing
+
 ```sh
 export PYTHONPATH=.
 CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config configs/midi/cascade/opencs/ds1000.yaml
 ```
-2. Training
+### 2. Training
+
 ```sh
 CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/cascade/opencs/ds1000.yaml --exp_name $MY_DS_EXP_NAME --reset  
 ```
-3. Inference
+### 3. Inference
+
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/cascade/opencs/ds1000.yaml --exp_name $MY_DS_EXP_NAME --reset --infer
+CUDA_VISIBLE_DEVICES=0 python run.py --exp_name $MY_DS_EXP_NAME --infer
 ```
 Easy inference with Google Colab:
 
