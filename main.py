@@ -83,7 +83,7 @@ with open(args.proj, 'r', encoding='utf-8') as f:
 if not isinstance(params, list):
     params = [params]
 
-set_hparams(print_hparams=True)
+set_hparams(print_hparams=False)
 sample_rate = hparams['audio_sample_rate']
 
 # Check for vocoder path
