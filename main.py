@@ -112,7 +112,7 @@ def infer_once(path: str, save_mel=False):
         result = np.zeros(0)
     current_length = 0
 
-    for param in params:
+    for i, param in enumerate(params):
         # Ban automatic pitch mode by default
         param_have_f0 = 'f0_seq' in param and param['f0_seq']
         if hparams['use_pitch_embed'] and not param_have_f0:
@@ -159,6 +159,8 @@ def infer_once(path: str, save_mel=False):
             else:
                 result = cross_fade(result, seg_audio, current_length + silent_length)
             current_length = current_length + silent_length + seg_audio.shape[0]
+        sys.stdout.flush()
+        print('| finish segment: %d/%d (%.2f%%)' % (i + 1, len(params), (i + 1) / len(params) * 100))
 
     if save_mel:
         print(f'| save mel: {path}')
