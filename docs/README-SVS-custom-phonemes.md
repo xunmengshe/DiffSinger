@@ -15,7 +15,7 @@
 The current code implementation supports customized grapheme-to-phoneme dictionaries, with the following limitations:
 
 - The dictionary must be a two-part phoneme system. Namely, one syllable should contain at most two phones, where only two cases are allowed: 1. one consonant + one vowel, 2. one single vowel.
-- `AP` (aspiration) and `SP` (stop) will be included in the phoneme list and cannot be removed.
+- `AP` (aspiration) and `SP` (space) will be included in the phoneme list and cannot be removed.
 
 #### Requirements for data labels
 
