@@ -305,6 +305,7 @@ class GaussianDiffusion(nn.Module):
                     skip_type="time_uniform",
                     method="singlestep",
                 )
+                self.bar.close()
             else:
                 for i in tqdm(reversed(range(0, t)), desc='sample time step', total=t):
                     x = self.p_sample(x, torch.full((b,), i, device=device, dtype=torch.long), cond)
