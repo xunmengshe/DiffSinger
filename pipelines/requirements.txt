@@ -1,0 +1,6 @@
+librosa
+matplotlib
+pyyaml
+soundfile
+sox
+textgrid
