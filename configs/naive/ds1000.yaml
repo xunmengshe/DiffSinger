@@ -14,7 +14,7 @@ vocoder_ckpt: checkpoints/nsf_hifigan/model
 use_nsf: true
 
 binarization_args:
-  with_wav: true
+  with_wav: false
   with_spk_embed: false
   with_align: true
 raw_data_dir: 'data/raw/opencpop/segments'
