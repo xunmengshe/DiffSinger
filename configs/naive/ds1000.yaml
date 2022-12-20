@@ -48,7 +48,7 @@ timesteps: 1000
 max_beta: 0.02
 lr: 0.0004
 decay_steps: 50000
-max_tokens: 10000
+max_tokens: 80000
 predictor_layers: 5
 dilation_cycle_length: 4  # *
 rel_pos: true
