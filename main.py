@@ -49,7 +49,7 @@ assert exp is not None, 'Default value of exp is deprecated. You must specify \'
 if not os.path.exists(f'{root_dir}/checkpoints/{exp}'):
     for ckpt in os.listdir(os.path.join(root_dir, 'checkpoints')):
         if ckpt.startswith(exp):
-            print(f'| match ckpt by suffix: {ckpt}')
+            print(f'| match ckpt by prefix: {ckpt}')
             exp = ckpt
             break
     assert os.path.exists(f'{root_dir}/checkpoints/{exp}'), 'There are no matching exp in \'checkpoints\' folder. ' \
