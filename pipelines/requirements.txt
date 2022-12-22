@@ -1,5 +1,6 @@
 librosa
 matplotlib
+praat-parselmouth
 pyyaml
 soundfile
 sox
