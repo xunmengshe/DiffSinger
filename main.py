@@ -76,14 +76,14 @@ if args.speedup > 0:
 
 with open(args.proj, 'r', encoding='utf-8') as f:
     params = json.load(f)
-    if args.key != 0:
-        params = trans_key(params, args.key)
-        if not args.title:
-            name += f'_{args.key}key'
-        print(f"音调基于原音频{args.key}key")
-
 if not isinstance(params, list):
     params = [params]
+
+if args.key != 0:
+    params = trans_key(params, args.key)
+    if not args.title:
+        name += f'_{args.key}key'
+    print(f"音调基于原音频{args.key}key")
 
 set_hparams(print_hparams=False)
 sample_rate = hparams['audio_sample_rate']
