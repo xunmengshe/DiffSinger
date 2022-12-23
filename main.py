@@ -8,11 +8,12 @@ import warnings
 import numpy as np
 import torch
 
-from inference.infer_utils import cross_fade, trans_key
+from utils.infer_utils import cross_fade, trans_key
 from inference.ds_cascade import DiffSingerCascadeInfer
 from inference.ds_e2e import DiffSingerE2EInfer
 from utils.audio import save_wav
 from utils.hparams import set_hparams, hparams
+from utils.slur_utils import merge_slurs
 
 sys.path.insert(0, '/')
 root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -74,14 +75,14 @@ if args.speedup > 0:
 
 with open(args.proj, 'r', encoding='utf-8') as f:
     params = json.load(f)
-    if args.key != 0:
-        params = trans_key(params, args.key)
-        if not args.title:
-            name += f'_{args.key}key'
-        print(f"音调基于原音频{args.key}key")
-
 if not isinstance(params, list):
     params = [params]
+
+if args.key != 0:
+    params = trans_key(params, args.key)
+    if not args.title:
+        name += f'_{args.key}key'
+    print(f"音调基于原音频{args.key}key")
 
 set_hparams(print_hparams=False)
 sample_rate = hparams['audio_sample_rate']
@@ -143,6 +144,8 @@ def infer_once(path: str, save_mel=False):
             torch.manual_seed(torch.seed() & 0xffff_ffff)
             torch.cuda.manual_seed_all(torch.seed() & 0xffff_ffff)
 
+        if not hparams.get('use_midi', False):
+            merge_slurs(param)
         if save_mel:
             mel, f0 = infer_ins.infer_once(param, return_mel=True)
             result.append({

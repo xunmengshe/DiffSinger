@@ -13,6 +13,7 @@ from einops import rearrange
 
 from modules.fastspeech.fs2 import FastSpeech2
 from modules.diffsinger_midi.fs2 import FastSpeech2MIDI
+from modules.naive_frontend.encoder import ParameterEncoder
 from utils.hparams import hparams
 from training.diffsinger import Batch2Loss
 
@@ -77,7 +78,8 @@ class GaussianDiffusion(nn.Module):
         if hparams.get('use_midi') is not None and hparams['use_midi']:
             self.fs2 = FastSpeech2MIDI(phone_encoder, out_dims)
         else:
-            self.fs2 = FastSpeech2(phone_encoder, out_dims)
+            #self.fs2 = FastSpeech2(phone_encoder, out_dims)
+            self.fs2 = ParameterEncoder(phone_encoder)
         self.mel_bins = out_dims
 
         if exists(betas):

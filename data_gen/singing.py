@@ -61,11 +61,18 @@ class SingingBinarizer(BaseBinarizer):
         phoneme_map = {}
         for ph in sorted(phone_set):
             phoneme_map[ph] = 0
-        for item in self.items.values():
-            for ph, slur in zip(item['ph'].split(), item['is_slur']):
-                if ph not in phone_set or slur == 1:
-                    continue
-                phoneme_map[ph] += 1
+        if hparams['use_midi']:
+            for item in self.items.values():
+                for ph, slur in zip(item['ph'].split(), item['is_slur']):
+                    if ph not in phone_set or slur == 1:
+                        continue
+                    phoneme_map[ph] += 1
+        else:
+            for item in self.items.values():
+                for ph in item['ph'].split():
+                    if ph not in phone_set:
+                        continue
+                    phoneme_map[ph] += 1
 
         print('===== Phoneme Distribution Summary =====')
         for i, key in enumerate(sorted(phoneme_map.keys())):
@@ -78,7 +85,6 @@ class SingingBinarizer(BaseBinarizer):
             print(f'\'{key}\': {phoneme_map[key]}', end=end)
 
         # Draw graph.
-        plt.rcParams['axes.unicode_minus'] = False
         plt.figure(figsize=(int(len(phone_set) * 0.8), 10))
         x = list(phoneme_map.keys())
         values = list(phoneme_map.values())
@@ -86,7 +92,7 @@ class SingingBinarizer(BaseBinarizer):
         plt.tick_params(labelsize=15)
         plt.xlim(-1, len(phone_set))
         for a, b in zip(x, values):
-            plt.text(a, b + 2, b, ha='center', va='bottom', fontsize=15)
+            plt.text(a, b, b, ha='center', va='bottom', fontsize=15)
         plt.grid()
         plt.title('Phoneme Distribution Summary', fontsize=30)
         plt.xlabel('Phoneme', fontsize=20)

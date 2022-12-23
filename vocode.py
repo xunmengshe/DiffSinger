@@ -8,7 +8,7 @@ import torch
 import tqdm
 
 from basics.base_svs_infer import BaseSVSInfer
-from inference.infer_utils import cross_fade
+from utils.infer_utils import cross_fade
 from utils.audio import save_wav
 from utils.hparams import set_hparams, hparams
 
