@@ -127,7 +127,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         with open(ckpt_config_path, 'w', encoding='utf-8') as f:
             hparams_non_recursive = hparams_.copy()
             hparams_non_recursive['base_config'] = []
-            yaml.safe_dump(hparams_non_recursive, f)
+            yaml.safe_dump(hparams_non_recursive, f, allow_unicode=True, encoding='utf-8')
         if hparams_.get('reset_phone_dict') or not os.path.exists(ckpt_dictionary):
             shutil.copy(dictionary, ckpt_dictionary)
 
