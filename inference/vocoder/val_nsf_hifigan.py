@@ -5,6 +5,7 @@ import numpy as np
 import resampy
 import torch
 import torchcrepe
+import tqdm
 
 from data_gen.data_gen_utils import get_pitch_parselmouth
 from src.vocoders.nsf_hifigan import NsfHifiGAN
@@ -12,9 +13,9 @@ from utils.audio import save_wav
 from utils.hparams import set_hparams, hparams
 
 sys.argv = [
-    'inference/svs/ds_e2e.py',
+    'inference/svs/ds_cascade.py',
     '--config',
-    'configs/midi/cascade/opencs/test.yaml',
+    'configs/midi/cascade/opencs/ds1000.yaml',
 ]
 
 
@@ -56,7 +57,9 @@ vocoder = NsfHifiGAN()
 in_path = 'path/to/input/wavs'
 out_path = 'path/to/output/wavs'
 os.makedirs(out_path, exist_ok=True)
-for filename in os.listdir(in_path):
+for filename in tqdm.tqdm(os.listdir(in_path)):
+    if not filename.endswith('.wav'):
+        continue
     wav, mel = vocoder.wav2spec(os.path.join(in_path, filename))
     f0, _ = get_pitch_parselmouth(wav, mel, hparams)
 
