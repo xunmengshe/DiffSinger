@@ -22,5 +22,5 @@ end = time.time()
 print('waveform', wav.shape)
 print('cost', end - start)
 
-wav *= 32767
-wavfile.write('onnx/assets/waveform.wav', 44100, wav.astype(np.int16))
+
+wavfile.write('onnx/assets/waveform.wav', 44100, wav[0])

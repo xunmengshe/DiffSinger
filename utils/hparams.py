@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import warnings
 
 import yaml
 
@@ -23,13 +24,13 @@ def override_config(old_config: dict, new_config: dict):
 
 
 def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, global_hparams=True):
-    '''
+    """
         Load hparams from multiple sources:
         1. config chain (i.e. first load base_config, then load config);
         2. if reset == True, load from the (auto-saved) complete config file ('config.yaml')
            which contains all settings and do not rely on base_config;
         3. load from argument --hparams or hparams_str, as temporary modification.
-    '''
+    """
     if config == '':
         parser = argparse.ArgumentParser(description='neural music')
         parser.add_argument('--config', type=str, default='',
@@ -45,6 +46,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     else:
         args = Args(config=config, exp_name=exp_name, hparams=hparams_str,
                     infer=False, validate=False, reset=False, debug=False)
+
     args_work_dir = ''
     if args.exp_name != '':
         args.work_dir = args.exp_name
@@ -53,7 +55,24 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     config_chains = []
     loaded_config = set()
 
+    warned_old_config = False
+
     def load_config(config_fn):  # deep first
+        # Backward compatibility with old checkpoints
+        if config_fn.startswith('usr/configs/'):
+            nonlocal warned_old_config
+            if not warned_old_config:
+                warnings.warn(
+                    message='You are using a config file from an old branch of DiffSinger repository, '
+                            'which refers to configs that have been moved or renamed in this branch. '
+                            'The config file path is automatically corrected, but please migrate to '
+                            'new checkpoints trained with this refactor branch as soon as possible.',
+                    category=ResourceWarning
+                )
+                warnings.filterwarnings(action='default')
+                warned_old_config = True
+            config_fn = config_fn[4:]
+
         with open(config_fn, encoding='utf-8') as f:
             hparams_ = yaml.safe_load(f)
         loaded_config.add(config_fn)
@@ -74,23 +93,17 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         return ret_hparams
 
     global hparams
-    assert args.config != '' or args_work_dir != ''
+    assert args.config != '' or args_work_dir != '', 'Either config or exp name should be specified.'
     saved_hparams = {}
-    if args_work_dir != 'checkpoints/':
-        ckpt_config_path = f'{args_work_dir}/config.yaml'
-        if os.path.exists(ckpt_config_path):
-            try:
-                with open(ckpt_config_path, encoding='utf-8') as f:
-                    saved_hparams.update(yaml.safe_load(f))
-            except:
-                pass
-        if args.config == '':
-            args.config = ckpt_config_path
+    ckpt_config_path = f'{args_work_dir}/config.yaml'
+    if os.path.exists(ckpt_config_path):
+        with open(ckpt_config_path, encoding='utf-8') as f:
+            saved_hparams.update(yaml.safe_load(f))
 
     hparams_ = {}
+    if args.config != '':
+        hparams_.update(load_config(args.config))
 
-    hparams_.update(load_config(args.config))
-    
     if not args.reset:
         hparams_.update(saved_hparams)
     hparams_['work_dir'] = args_work_dir
@@ -112,7 +125,9 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     if args_work_dir != '' and (not os.path.exists(ckpt_config_path) or args.reset) and not args.infer:
         os.makedirs(hparams_['work_dir'], exist_ok=True)
         with open(ckpt_config_path, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(hparams_, f)
+            hparams_non_recursive = hparams_.copy()
+            hparams_non_recursive['base_config'] = []
+            yaml.safe_dump(hparams_non_recursive, f, allow_unicode=True, encoding='utf-8')
         if hparams_.get('reset_phone_dict') or not os.path.exists(ckpt_dictionary):
             shutil.copy(dictionary, ckpt_dictionary)
 

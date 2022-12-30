@@ -23,7 +23,10 @@ def load_model(model_path, device='cuda'):
 
     generator = Generator(h).to(device)
 
-    cp_dict = torch.load(model_path)
+    if torch.cuda.is_available():
+        cp_dict = torch.load(model_path)
+    else:
+        cp_dict = torch.load(model_path, map_location="cpu")
     generator.load_state_dict(cp_dict['generator'])
     generator.eval()
     generator.remove_weight_norm()
@@ -249,10 +252,8 @@ class SineGen(torch.nn.Module):
         output uv: tensor(batchsize=1, length, 1)
         """
         with torch.no_grad():
-            f0_buf = torch.zeros(f0.shape[0], f0.shape[1], self.dim,
-                                 device=f0.device)
             # fundamental component
-            fn = torch.multiply(f0, torch.FloatTensor([[range(1, self.harmonic_num + 2)]]).to(f0.device))
+            fn = torch.multiply(f0, torch.arange(1, self.harmonic_num + 2, device=f0.device))
 
             # generate sine waveforms
             sine_waves = self._f02sine(fn) * self.sine_amp

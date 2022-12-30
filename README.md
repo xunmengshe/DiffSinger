@@ -6,26 +6,46 @@ This is a cleaner version of Diffsinger, which provides:
 - better file structre: tts-related files are filtered out into the "tts/" folder, as they are not used in DiffSinger.
 - **(new) Much condensed version of the preprocessing, training, and inference pipeline**. The preprocessing pipeline is at 'preprocessing/opencpop.py', the training pipeline is at 'training/diffsinger.py', the inference pipeline is at 'inference/ds_cascade.py' or 'inference/ds_e2e.py'.
 
-Getting Started:
-1. Preprocessing
+## Getting Started
+
+### 0. Installation
+
+```bash
+# Install PyTorch manually (1.8.2 LTS recommended)
+# See instructions at https://pytorch.org/get-started/locally/
+# Below is an example for CUDA 11.1
+pip3 install torch==1.8.2 torchvision==0.9.2 torchaudio==0.8.2 --extra-index-url https://download.pytorch.org/whl/lts/1.8/cu111
+
+# Install other requirements
+pip install -r requirements.txt
+```
+
+### 1. Preprocessing
+
 ```sh
 export PYTHONPATH=.
-CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config configs/midi/cascade/opencs/aux_rel.yaml
+CUDA_VISIBLE_DEVICES=0 python data_gen/binarize.py --config configs/midi/cascade/opencs/ds1000.yaml
 ```
-2. Training
+### 2. Training
+
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_adj_rel.yaml --exp_name $MY_DS_EXP_NAME --reset  
+CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/cascade/opencs/ds1000.yaml --exp_name $MY_DS_EXP_NAME --reset  
 ```
-3. Inference
+### 3. Inference
+
 ```sh
-CUDA_VISIBLE_DEVICES=0 python run.py --config configs/midi/e2e/opencpop/ds100_adj_rel.yaml --exp_name $MY_DS_EXP_NAME --reset --infer
+CUDA_VISIBLE_DEVICES=0 python run.py --exp_name $MY_DS_EXP_NAME --infer
 ```
+Easy inference with Google Colab:
+
+Version 1: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kfmZ6Y018c5trSwQAbhdQtZ7Il8W_4BU)
+
+Version 2: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1V7yjNlh8_8o3IPK9buFb5MHVFrYmhELi)
 
 # DiffSinger: Singing Voice Synthesis via Shallow Diffusion Mechanism
 [![arXiv](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/abs/2105.02446)
 [![GitHub Stars](https://img.shields.io/github/stars/MoonInTheRiver/DiffSinger?style=social)](https://github.com/MoonInTheRiver/DiffSinger)
 [![downloads](https://img.shields.io/github/downloads/MoonInTheRiver/DiffSinger/total.svg)](https://github.com/MoonInTheRiver/DiffSinger/releases)
- | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kfmZ6Y018c5trSwQAbhdQtZ7Il8W_4BU)
  | [Interactive🤗 TTS](https://huggingface.co/spaces/NATSpeech/DiffSpeech)
  | [Interactive🤗 SVS](https://huggingface.co/spaces/Silentlin/DiffSinger)
 
@@ -52,7 +72,7 @@ This repository is the official PyTorch implementation of our AAAI-2022 [paper](
  - Jan.29, 2022: support MIDI-A-version SVS.
  - Jan.13, 2022: support SVS, release PopCS dataset.
  - Dec.19, 2021: support TTS. [HuggingFace🤗 TTS](https://huggingface.co/spaces/NATSpeech/DiffSpeech)
- 
+
 :rocket: **News**: 
  - Feb.24, 2022: Our new work, NeuralSVB was accepted by ACL-2022 [![arXiv](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/abs/2202.13277). [Demo Page](https://neuralsvb.github.io).
  - Dec.01, 2021: DiffSinger was accepted by AAAI-2022.
